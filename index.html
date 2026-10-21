@@ -127,6 +127,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <div class="upd">
       <span id="stamp">예약 현황을 불러오는 중…</span>
       <button class="btn" id="refresh" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span>새로고침</span></button>
+      <button class="btn ghost" id="ackBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg><span>깜빡임 리셋</span></button>
       <a class="btn ghost" id="check" href="https://claude.ai/artifact/Jj7YpgqvRPMDu9Gq89Esmt" target="_blank" rel="noopener"><span>지금 확인</span></a>
     </div>
   </div>
@@ -188,7 +189,7 @@ function badge(b,cls,sp,title,style=""){
 }
 const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
-const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]);return{b,s,re:s==="open"&&String(R[b.name]||"")[d-1]==="1",sp:(B.sp||"")[d-1]||"j"}}).filter(r=>r.s)};
+const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]);return{b,s,re:s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(`${mk}|${b.name}|${d}`),sp:(B.sp||"")[d-1]||"j"}}).filter(r=>r.s)};
 
 function meta(){
   const demo={ab:""};
@@ -245,7 +246,18 @@ function stamp(){
   const S=s.sources||{};const a=f(S.lukina||S.dy||s.updatedAt),b=f(S.khan||S.jeil);
   el.textContent=`루키나·동양 ${a}`+(b?` · 칸피싱·제일 ${b}`:"")+" 기준";
 }
-function render(){keyRow();grid();panel();stamp()}
+// 깜빡임 리셋: 확인한 "다시 열린 자리"는 이 기기에 기억해 두고 깜빡이지 않게 함
+let ACK=new Set();try{ACK=new Set(JSON.parse(localStorage.getItem("ackReopen")||"[]"))}catch(e){}
+const saveAck=()=>{try{localStorage.setItem("ackReopen",JSON.stringify([...ACK]))}catch(e){}};
+function flaggedKeys(){const out=[];for(const[mk,M]of Object.entries(st.seats||{})){const R=(M&&M.reopen)||{},B=(M&&M.boats)||{};
+  for(const[name,f]of Object.entries(R)){const s=(B[name]&&B[name].s)||[];String(f).split("").forEach((c,i)=>{if(c==="1"&&typeof s[i]==="number"&&s[i]>0)out.push(`${mk}|${name}|${i+1}`)})}}return out}
+function syncAck(){if(!st.loaded||!Object.keys(st.seats||{}).length)return;const live=new Set(flaggedKeys());let ch=false;
+  for(const k of [...ACK])if(!live.has(k)){ACK.delete(k);ch=true} // 다시 마감된 자리는 잊어서, 나중에 또 열리면 다시 깜빡이게
+  if(ch)saveAck();
+  const n=[...live].filter(k=>!ACK.has(k)).length,b=document.getElementById("ackBtn");
+  b.hidden=!n;b.querySelector("span").textContent=`깜빡임 리셋 (${n})`}
+document.getElementById("ackBtn").onclick=()=>{flaggedKeys().forEach(k=>ACK.add(k));saveAck();render()};
+function render(){syncAck();keyRow();grid();panel();stamp()}
 document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
 document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
