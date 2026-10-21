@@ -74,6 +74,17 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .seg button{font:inherit;font-size:13px;border:0;background:var(--surface);color:var(--ink);padding:5px 12px;cursor:pointer}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.wbox{flex:1 1 100%;display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
+.wsw{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.wsw .muted{color:var(--muted);font-size:12px}
+.wform{display:grid;gap:8px}
+.wform[hidden]{display:none!important}
+.wform input[type=date],.wform select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 6px}
+.wrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.wrow>span{color:var(--muted);font-size:12px;min-width:44px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:2px 9px;cursor:pointer;line-height:20px}
+.chip[aria-pressed="false"]{opacity:.35}
 .tog{min-height:32px;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
 .tog[aria-pressed="true"]{background:var(--open);border-color:var(--open);color:var(--open-ink)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -156,6 +167,22 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <span>처음 열 때 확인할 기간</span>
     <select id="aheadSel" aria-label="확인 기간"></select>
     <small>짧을수록 빠릅니다. 그 뒤 달은 캘린더를 넘기면 그때 확인해요.</small>
+    <div class="wbox" id="wBox">
+      <label class="wsw"><input type="checkbox" id="wOn"> <b>빈자리 알림</b> <span class="muted">내가 확인하지 않아도 정해 둔 간격으로 확인하고 알려줘요</span></label>
+      <div class="wform" id="wForm">
+        <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option></select></label>
+        <label>날짜 <input type="date" id="wFrom"> ~ <input type="date" id="wTo"></label>
+        <div class="wrow"><span>요일</span><div class="chips" id="wDows"></div></div>
+        <label>남은 자리 <select id="wMin"></select> 이상</label>
+        <div class="wrow"><span>어종</span><div class="chips" id="wSp"></div></div>
+        <div class="wrow"><span>배</span><div class="chips" id="wBoats"></div></div>
+        <div class="wrow"><span>알림 기준</span>
+          <label><input type="radio" name="wMode" value="any" checked> 자리가 있으면</label>
+          <label><input type="radio" name="wMode" value="reopen"> 취소로 다시 열린 자리만</label></div>
+      </div>
+      <button class="btn" id="wSave" type="button"><span>알림 설정 저장</span></button>
+      <small>저장한 뒤 아이폰 홈 화면에 Scriptable 위젯을 추가하고, 위젯 설정에서 이 스크립트를 고르면 동작해요. iOS가 위젯을 새로 고치는 때에 맞춰 확인해서, 간격보다 조금 늦어질 수 있어요.</small>
+    </div>
   </div>
   <div class="meta" id="meta"></div>
   <div class="bar">
@@ -343,6 +370,27 @@ if(IN_APP){
   sel.onchange=()=>{const n=+sel.value;window.__ahead=n;location.href="fishing://settings?ahead="+n};
 }
 load(false);
+// 빈자리 알림 설정
+if(IN_APP){
+  const W=Object.assign({on:false,interval:60,from:"",to:"",dows:[0,1,2,3,4,5,6],min:1,sp:["j","f"],boats:[],mode:"any"},window.__watch||{});
+  const $=id=>document.getElementById(id);
+  const allBoats=window.__boatsAll||BOATS.map(b=>b.name);
+  let selBoats=new Set(W.boats&&W.boats.length?W.boats:allBoats),selDows=new Set(W.dows),selSp=new Set(W.sp);
+  $("wOn").checked=!!W.on;$("wForm").hidden=!W.on;$("wOn").onchange=()=>{$("wForm").hidden=!$("wOn").checked};
+  $("wInt").value=String(W.interval);$("wFrom").value=W.from||"";$("wTo").value=W.to||"";
+  for(let n=1;n<=10;n++){const o=document.createElement("option");o.value=n;o.textContent=n+"석";$("wMin").append(o)}$("wMin").value=String(W.min||1);
+  document.querySelectorAll('input[name="wMode"]').forEach(r=>{r.checked=r.value===(W.mode||"any")});
+  const chips=(el,items,set,label)=>{el.innerHTML="";items.forEach(v=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label(v);
+    b.setAttribute("aria-pressed",String(set.has(v)));b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);if(!set.size)set.add(v);b.setAttribute("aria-pressed",String(set.has(v)))};el.append(b)})};
+  chips($("wDows"),[1,2,3,4,5,6,0],selDows,v=>WD[v]);
+  chips($("wSp"),["j","f"],selSp,v=>SP[v]);
+  chips($("wBoats"),allBoats,selBoats,v=>v);
+  $("wSave").onclick=()=>{
+    const cfg={on:$("wOn").checked,interval:+$("wInt").value,from:$("wFrom").value,to:$("wTo").value,dows:[...selDows],min:+$("wMin").value,
+      sp:[...selSp],boats:selBoats.size===allBoats.length?[]:[...selBoats],mode:(document.querySelector('input[name="wMode"]:checked')||{}).value||"any"};
+    window.__watch=cfg;location.href="fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg));
+  };
+}
 if(!IN_APP){
   setInterval(()=>{if(!document.hidden)load(false)},10*60*1000);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden)load(false)});

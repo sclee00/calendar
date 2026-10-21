@@ -200,13 +200,154 @@ async function upload(data) {
   return true;
 }
 
+
+// ───────────────────────── 빈자리 알림(위젯·단축어 자동화) ─────────────────────────
+// 켜 두면 홈 화면 위젯이 새로 고쳐질 때 정해 둔 조건의 날짜만 확인하고, 맞는 자리가 생기면 알림을 보낸다.
+const WATCH_STATE = fm.joinPath(DIR, "watch-state.json");
+const spOf2 = (c) => (c === "f" ? "f" : "j");
+const strip = (h) => (h || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+
+// WebView 없이 쓰는 분석기(위젯·단축어에서는 화면 요소를 못 쓸 수 있어서)
+function regexParse(kind, html, y, m) {
+  const sq = (s) => (s || "").replace(/\s+/g, "");
+  const norm = (s) => { s = sq(s).replace(/\(.*$/, ""); return KEEP.find((k) => s === sq(k) || s.startsWith(sq(k))) || null; };
+  const spc = (t) => { t = t || ""; if (/광어|우럭|농어|외수질|다운샷|지깅/.test(t)) return "f"; if (/주꾸미|쭈꾸미/.test(t)) return "j"; if (/갑오징어/.test(t)) return "g"; return "j"; };
+  const stc = (t) => { t = sq(t); const mm = t.match(/남은자리(\d+)/); if (mm) return +mm[1]; if (/예약마감|예약완료|마감/.test(t)) return 0; if (/기상|취소|점검|휴무|휴항/.test(t)) return "x"; return null; };
+  const rows = []; let found = 0;
+  if (kind === "ss") {
+    html.split(/<table[^>]+class="ship_unit/).slice(1).forEach((c) => {
+      const name = norm(strip((c.match(/class="title"[^>]*>([\s\S]*?)<\/div>/) || [])[1]));
+      const sd = (c.match(/data-sdate="(\d{4})-(\d{2})-(\d{2})"/) || []);
+      if (!name || !sd[0] || +sd[2] !== m) return;
+      const rem = c.match(/class="remain"[\s\S]*?<\/li>/);
+      const info = c.match(/class="ship_info2"[\s\S]*?<\/td>/);
+      const st = stc(strip(rem ? rem[0] : info ? info[0] : ""));
+      if (st !== null) found++;
+      rows.push([+sd[3], name, st, spc(strip((c.match(/id="fish"[^>]*>([\s\S]*?)<\/div>/) || [])[1]))]);
+    });
+  } else {
+    const parts = html.split(/<a name="(\d{8})"/);
+    for (let i = 1; i < parts.length; i += 2) {
+      const day = parts[i], sec = parts[i + 1] || "";
+      if (+day.slice(4, 6) !== m) continue;
+      const spans = [...sec.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)].map((x) => ({ i: x.index, name: norm(strip(x[1])) })).filter((x) => x.name);
+      spans.forEach((sp, j) => {
+        const seg = sec.slice(sp.i, j + 1 < spans.length ? spans[j + 1].i : sec.length);
+        const cells = seg.split(/<\/td>/i);
+        const last = cells.length > 1 ? cells[cells.length - 2] : seg;
+        const alt = [...last.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(last);
+        const kind2 = strip((seg.match(/alt="낚시종류"[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/) || [])[1]);
+        rows.push([+day.slice(6), sp.name, stc(alt), spc(kind2)]); found++;
+      });
+    }
+  }
+  return { rows, found };
+}
+
+async function makeParser() {
+  try { // 가능하면 화면에 띄우지 않는 WebView의 DOM 분석기를 쓴다
+    const wv = new WebView();
+    await wv.loadHTML("<!doctype html><p>");
+    await wv.evaluateJavaScript(PARSER);
+    const ok = await wv.evaluateJavaScript(`typeof __fishParse==="function"`);
+    if (ok) return (kind, html, y, m) => wv.evaluateJavaScript(`__fishParse(${JSON.stringify(kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
+  } catch (e) {}
+  return async (kind, html, y, m) => regexParse(kind, html, y, m);
+}
+
+function watchDays(cfg) {
+  const kst = new Date(Date.now() + 9 * 3600e3);
+  const today = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()));
+  const from = cfg.from ? new Date(cfg.from + "T00:00:00Z") : today;
+  const to = cfg.to ? new Date(cfg.to + "T00:00:00Z") : new Date(today.getTime() + 30 * 864e5);
+  const dows = Array.isArray(cfg.dows) && cfg.dows.length ? cfg.dows : [0, 1, 2, 3, 4, 5, 6];
+  const out = [];
+  for (let d = new Date(Math.max(from, today)); d <= to && out.length < 93; d = new Date(d.getTime() + 864e5)) {
+    if (dows.includes(d.getUTCDay())) out.push([d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]);
+  }
+  return out;
+}
+
+async function watch() {
+  const cfg = (loadSettings().watch) || {};
+  const w = new ListWidget();
+  w.backgroundColor = new Color("#f3f5f7");
+  w.url = "scriptable:///run/" + encodeURIComponent(Script.name());
+  const line = (t, size, color, bold) => { const x = w.addText(t); x.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size); x.textColor = new Color(color); x.lineLimit = 2; return x; };
+  line("낚시배 빈자리", 13, "#1f5f99", true);
+  const done = (hours) => { w.refreshAfterDate = new Date(Date.now() + hours * 3600e3); if (config.runsInWidget) Script.setWidget(w); };
+  if (!cfg.on) { line("알림 꺼짐", 12, "#6a7983"); line("앱의 설정에서 켤 수 있어요", 10, "#6a7983"); done(6); return "알림 꺼짐"; }
+
+  const days = watchDays(cfg);
+  const boats = Array.isArray(cfg.boats) && cfg.boats.length ? cfg.boats : KEEP;
+  const sps = Array.isArray(cfg.sp) && cfg.sp.length ? cfg.sp : ["j", "f"];
+  const min = Math.max(1, +cfg.min || 1);
+  const want = new Set(days.map(([y, m, d]) => `${ymKey(y, m)}|${d}`));
+  const parse = await makeParser();
+  const hits = [], seen = {}, errors = [];
+  await Promise.all(SITES.filter((s) => s.boats.some((b) => boats.includes(b))).map(async (site) => {
+    try {
+      const pages = new Map(); // 필요한 페이지만
+      for (const [y, m, d] of days) {
+        if (site.kind === "ss") pages.set(`${y}${pad(m)}`, [y, m, `https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`]);
+        else { const st = site.step || 4, d0 = 1 + st * Math.floor((d - 1) / st); pages.set(`${y}${pad(m)}${d0}`, [y, m, `https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d0)}`]); }
+      }
+      for (const [y, m, url] of pages.values()) {
+        const res = await parse(site.kind, await get(url), y, m);
+        for (const [d, name, s, sp] of res.rows) {
+          if (!boats.includes(name) || !want.has(`${ymKey(y, m)}|${d}`) || !sps.includes(spOf2(sp))) continue;
+          const key = `${ymKey(y, m)}|${name}|${d}`;
+          seen[key] = s;
+          if (typeof s === "number" && s >= min) hits.push({ key, y, m, d, name, s });
+        }
+      }
+    } catch (e) { errors.push(`${site.host}: ${e.message}`); }
+  }));
+
+  // 이미 알린 자리는 다시 알리지 않음. 다시 마감되면 기록을 지워서, 또 열리면 다시 알림
+  let state = {}; try { state = JSON.parse(fm.readString(WATCH_STATE)) || {}; } catch (e) {}
+  const prev = state.prev || {}, notified = state.notified || {};
+  for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
+  const fresh = hits.filter((h) => !notified[h.key] && (cfg.mode !== "reopen" || prev[h.key] === 0));
+  fresh.forEach((h) => { notified[h.key] = 1; });
+  fm.writeString(WATCH_STATE, JSON.stringify({ prev: { ...prev, ...seen }, notified, at: kstIso() }));
+
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
+  if (fresh.length) {
+    const n = new Notification();
+    n.title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
+    n.body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
+    n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+    n.sound = "default";
+    await n.schedule();
+  }
+  const now = new Date(Date.now() + 9 * 3600e3);
+  line(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} 확인 · 조건 맞는 자리 ${hits.length}곳`, 11, "#18232c");
+  hits.slice(0, 3).forEach((h) => line(fmt(h), 11, "#13a06e", true));
+  if (errors.length) line("일부 사이트 확인 실패", 10, "#e0473a");
+  done(Math.max(0.5, (+cfg.interval || 60) / 60));
+  return `조건 맞는 자리 ${hits.length}곳, 새 알림 ${fresh.length}곳`;
+}
+
 const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
 
 async function run() {
-  if (!config.runsInApp) {
-    // 단축어(Siri) 안에서는 화면·알림창을 띄울 수 없다 → Scriptable 앱을 열어 다시 실행
-    const url = "scriptable:///run/" + encodeURIComponent(Script.name());
-    try { Safari.open(url); } catch (e) {}
+  if (config.runsInWidget || !config.runsInApp) {
+    // 위젯·단축어 자동화: 화면 없이 조건만 확인하고 알림
+    const settings = loadSettings();
+    if (config.runsInWidget || (settings.watch && settings.watch.on)) {
+      let out = "";
+      try { out = await watch(); } catch (e) {
+        const w = new ListWidget(); w.addText("낚시배 빈자리"); w.addText("오류: " + e.message);
+        if (config.runsInWidget) Script.setWidget(w);
+        out = "오류: " + e.message;
+      }
+      Script.setShortcutOutput(out);
+      return;
+    }
+    // 단축어에서 '앱에서 실행'이 꺼진 경우 → Scriptable 앱을 열어 다시 실행
+    try { Safari.open("scriptable:///run/" + encodeURIComponent(Script.name())); } catch (e) {}
     Script.setShortcutOutput("단축어의 Run Script 동작에서 '앱에서 실행(Run In App)'을 켜 주세요.");
     return;
   }
@@ -245,7 +386,7 @@ async function main(wv, say) {
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};</script>`;
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -308,6 +449,16 @@ async function main(wv, say) {
         const more = first.filter(([y, m]) => !checked.has(ymKey(y, m))); // 늘린 만큼만 바로 확인
         if (more.length) want(more);
       }
+      return false;
+    }
+    if (u.startsWith("fishing://watch")) { // 빈자리 알림 설정 저장
+      try {
+        const cfg = JSON.parse(decodeURIComponent((/cfg=([^&]*)/.exec(u) || [])[1] || "null"));
+        if (cfg && typeof cfg === "object") {
+          saveSettings({ ...loadSettings(), watch: cfg });
+          js(`__setChecking(false, ${JSON.stringify(cfg.on ? "빈자리 알림을 켰어요. 홈 화면에 Scriptable 위젯을 추가하면 동작합니다." : "빈자리 알림을 껐어요.")})`);
+        }
+      } catch (e) {}
       return false;
     }
     if (u.startsWith("fishing://month")) { // 캘린더를 아직 확인하지 않은 달로 넘김
