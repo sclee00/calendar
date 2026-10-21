@@ -1,0 +1,16 @@
+https://khanfishing.com/               000  0B 12.000840s
+https://jnaksi.com/                    000  0B 12.001433s
+http://jnaksi.fishmap.kr/              000  0B 12.000956s
+https://jnaksi.fishmap.kr/             000  0B 12.001183s
+http://khanfishing.fishmap.kr/         000  0B 12.000572s
+https://khanfishing.fishmap.kr/        000  0B 12.001150s
+https://thefishing.kr/                 000  0B 12.001042s
+https://www.thefishing.kr/             000  0B 12.000822s
+https://m.thefishing.kr/               000  0B 12.001313s
+http://jnaksi.com/                     000  0B 12.000815s
+http://khanfishing.com/                000  0B 12.000389s
+--- dns
+khanfishing.com: 115.68.85.4 
+jnaksi.com: 115.68.85.4 
+jnaksi.fishmap.kr: 115.68.85.4 
+thefishing.kr: 115.68.85.4 
