@@ -1,11 +1,17 @@
 name: 접속 진단
 on: { workflow_dispatch: {} }
+permissions: { contents: write }
 jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - run: |
+          exec > diag.txt 2>&1
           for u in https://khanfishing.com/ https://jnaksi.com/ http://jnaksi.fishmap.kr/ https://jnaksi.fishmap.kr/ http://khanfishing.fishmap.kr/ https://khanfishing.fishmap.kr/ https://thefishing.kr/ https://www.thefishing.kr/ https://m.thefishing.kr/ http://jnaksi.com/ http://khanfishing.com/; do
             printf "%-38s " "$u"; curl -sS -o /tmp/b -w "%{http_code} %{remote_ip} %{size_download}B %{time_total}s\n" --max-time 12 "$u" 2>&1 | tail -1
           done
           echo "--- dns"; for h in khanfishing.com jnaksi.com jnaksi.fishmap.kr thefishing.kr; do echo "$h: $(getent hosts $h | awk '{print $1}' | tr '\n' ' ')"; done
+      - run: |
+          git config user.name seat-bot; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b diag-out; git add -f diag.txt; git commit -qm diag; git push -f origin diag-out
