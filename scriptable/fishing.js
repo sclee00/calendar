@@ -9,11 +9,11 @@ const RAW = `https://raw.githubusercontent.com/${REPO}/main/`;
 const SITES = [
   { id: "lukina", kind: "ss", host: "lukina.sunsang24.com", boats: ["루키나 2호", "루키나호"] },
   { id: "dy", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
-  { id: "khan", kind: "tf", host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
-  { id: "jeil", kind: "tf", host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
+  { id: "khan", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
+  { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
-const GAP = 1200;
+const GAP = 800; // 같은 서버에 보내는 요청 사이 간격(ms)
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
 
@@ -45,7 +45,8 @@ async function get(url) {
   const t = await r.loadString();
   const code = r.response && r.response.statusCode;
   if (code && code >= 400) throw new Error(`HTTP ${code}`);
-  return t;
+  // 분석에 필요 없는 스크립트·스타일·주석을 덜어내 WebView로 넘기는 양을 줄인다
+  return t.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<!--[\s\S]*?-->/g, "");
 }
 
 // WebView(WebKit) 안에서 DOMParser로 HTML을 읽는 함수. 브라우저용 수집 코드와 같은 규칙.
@@ -105,7 +106,7 @@ async function scrapeSite(wv, site, progress) {
       if (res.found) seen = true; else if (seen) break; // 예약이 열린 마지막 달 다음에서 멈춤
     } else {
       let found = 0;
-      for (let d = 1; d <= daysIn(y, m); d += 4) {
+      for (let d = 1; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
         const res = await parse(await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
         res.rows.forEach(([dd, n, s, sp]) => put(y, m, dd, n, s, sp));
         found += res.found;
@@ -213,14 +214,23 @@ async function run() {
     checking = true;
     await js(`__setChecking(true, "선사 예약 화면을 확인하는 중…")`);
     const results = {}, errors = [], sources = { ...(old.sources || {}) };
-    for (const site of SITES) {
-      try {
-        results[site.id] = await scrapeSite(wv, site, (t) => js(`__setChecking(true, ${JSON.stringify("확인 중: " + t)})`));
-        sources[site.id] = kstIso();
-      } catch (e) {
-        errors.push(`${site.host}: ${e.message}`);
+    const doing = {};
+    const show = () => js(`__setChecking(true, ${JSON.stringify("확인 중: " + Object.values(doing).filter(Boolean).join(", "))})`);
+    // 같은 서버(선상24끼리, 더피싱끼리)는 하나씩, 서로 다른 서버는 동시에
+    const groups = [SITES.filter((x) => x.kind === "ss"), SITES.filter((x) => x.kind === "tf")];
+    await Promise.all(groups.map(async (group, gi) => {
+      for (const site of group) {
+        try {
+          results[site.id] = await scrapeSite(wv, site, (t) => { doing[gi] = t; return show(); });
+          sources[site.id] = kstIso();
+        } catch (e) {
+          errors.push(`${site.host}: ${e.message}`);
+        }
+        doing[gi] = "";
+        // 끝난 사이트부터 바로 캘린더에 반영
+        await js(`__applySeats(${JSON.stringify(merge(old, results, [], sources))})`);
       }
-    }
+    }));
     const data = merge(old, results, errors, sources);
     fm.writeString(CACHE, JSON.stringify(data));
     old = data;
