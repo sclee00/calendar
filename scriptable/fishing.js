@@ -86,7 +86,7 @@ window.__fishParse = function (kind, html, y, m) {
 };
 true;`;
 
-async function scrapeSite(wv, site, progress) {
+async function scrapeSite(wv, site, monthList, progress) {
   const out = {};
   const put = (y, m, d, name, s, sp) => {
     if (!name || s === null) return;
@@ -98,7 +98,7 @@ async function scrapeSite(wv, site, progress) {
   const parse = async (html, y, m) =>
     wv.evaluateJavaScript(`__fishParse(${JSON.stringify(site.kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
   let seen = false;
-  for (const [y, m] of monthsAhead()) {
+  for (const [y, m] of monthList) {
     await progress(`${site.host} ${m}월`);
     if (site.kind === "ss") {
       const res = await parse(await get(`https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`), y, m);
@@ -115,18 +115,18 @@ async function scrapeSite(wv, site, progress) {
     }
   }
   for (const k in out) for (const n in out[k]) out[k][n].sp = out[k][n].sp.join("");
-  if (!Object.keys(out).length) throw new Error("읽은 배가 없음");
+  // 이번 달을 확인했는데 배가 하나도 없으면 사이트 문제로 보고 이전 값을 유지
+  const cur = ymKey(...monthsAhead()[0]);
+  if (!Object.keys(out).length && monthList.some(([y, m]) => ymKey(y, m) === cur)) throw new Error("읽은 배가 없음");
   return out;
 }
 
 // 이전 결과와 비교해 "취소로 다시 열린 자리"를 표시 (GitHub 수집 스크립트와 같은 규칙)
-function merge(old, results, errors, sources) {
+function merge(old, results, errors, sources, checked) {
   const oldMonths = (old && old.months) || {};
-  const MONTHS = monthsAhead(), curYM = ymKey(...MONTHS[0]);
-  const months = {};
-  for (const [k, v] of Object.entries(oldMonths)) if (k < curYM) months[k] = v;
+  const months = { ...oldMonths }; // 이번에 확인하지 않은 달은 그대로 둔다
   const reopened = [];
-  const keys = new Set([...MONTHS.map(([y, m]) => ymKey(y, m)), ...Object.keys(oldMonths).filter((k) => k >= curYM)]);
+  const keys = new Set(checked);
   for (const k of [...keys].sort()) {
     const prev = oldMonths[k] || { boats: {}, reopen: {} };
     const boats = {}, reopen = {};
@@ -153,7 +153,7 @@ function merge(old, results, errors, sources) {
         if (flags.includes("1")) reopen[name] = flags;
       }
     }
-    if (Object.keys(boats).length) months[k] = { boats, reopen };
+    if (Object.keys(boats).length) months[k] = { boats, reopen }; else delete months[k];
   }
   return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, sources, months };
 }
@@ -203,16 +203,23 @@ async function run() {
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
 
-  const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};</script>`;
-  const wv = new WebView();
-  let checking = false;
-  const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
+  const AHEAD = 3; // 처음에는 이번 달부터 3개월만 확인
+  const all = monthsAhead();
+  const first = all.slice(0, AHEAD);
+  const checked = new Set(first.map(([y, m]) => ymKey(y, m)));
 
-  async function check() {
-    if (checking) return;
-    checking = true;
-    await js(`__setChecking(true, "선사 예약 화면을 확인하는 중…")`);
+  const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};</script>`;
+  const wv = new WebView();
+  let busy = false;
+  const queue = [];
+  const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
+  const label = (list) => list.map(([y, m]) => `${m}월`).join("·");
+
+  async function check(list) {
+    const keys = list.map(([y, m]) => ymKey(y, m));
+    keys.forEach((k) => checked.add(k));
+    await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(true, ${JSON.stringify(label(list) + " 확인하는 중…")})`);
     const results = {}, errors = [], sources = { ...(old.sources || {}) };
     const doing = {};
     const show = () => js(`__setChecking(true, ${JSON.stringify("확인 중: " + Object.values(doing).filter(Boolean).join(", "))})`);
@@ -221,17 +228,17 @@ async function run() {
     await Promise.all(groups.map(async (group, gi) => {
       for (const site of group) {
         try {
-          results[site.id] = await scrapeSite(wv, site, (t) => { doing[gi] = t; return show(); });
+          results[site.id] = await scrapeSite(wv, site, list, (t) => { doing[gi] = t; return show(); });
           sources[site.id] = kstIso();
         } catch (e) {
           errors.push(`${site.host}: ${e.message}`);
         }
         doing[gi] = "";
         // 끝난 사이트부터 바로 캘린더에 반영
-        await js(`__applySeats(${JSON.stringify(merge(old, results, [], sources))})`);
+        await js(`__applySeats(${JSON.stringify(merge(old, results, [], sources, keys))})`);
       }
     }));
-    const data = merge(old, results, errors, sources);
+    const data = merge(old, results, errors, sources, keys);
     fm.writeString(CACHE, JSON.stringify(data));
     old = data;
     await js(`__applySeats(${JSON.stringify(data)})`);
@@ -239,12 +246,30 @@ async function run() {
     if (data.reopened.length) msg = `취소로 다시 열린 자리 ${data.reopened.length}곳: ${data.reopened.slice(0, 6).join(", ")}${data.reopened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     try { await upload(data); } catch (e) { msg += (msg ? " · " : "") + "웹 캘린더 반영 실패: " + e.message; }
     await js(`__setChecking(false, ${JSON.stringify(msg)})`);
-    checking = false;
   }
+  // 확인 요청은 차례로 처리 (동시에 두 번 돌지 않게)
+  async function pump() {
+    if (busy) return;
+    busy = true;
+    while (queue.length) { try { await check(queue.shift()); } catch (e) {} }
+    busy = false;
+  }
+  const want = (list) => { if (list.length) { queue.push(list); pump(); } };
+  const ymOf = (u) => { const m = /[?&]ym=(\d{4})-(\d{2})/.exec(u); return m ? [+m[1], +m[2]] : null; };
 
   wv.shouldAllowRequest = (req) => {
     const u = req.url || "";
-    if (u.startsWith("fishing://check")) { check(); return false; }
+    if (u.startsWith("fishing://check")) { // 지금 확인: 3개월 + 보고 있는 달(그 뒤라면)
+      const list = [...first];
+      const v = ymOf(u);
+      if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
+      want(list); return false;
+    }
+    if (u.startsWith("fishing://month")) { // 캘린더를 아직 확인하지 않은 달로 넘김
+      const v = ymOf(u);
+      if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
+      return false;
+    }
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
@@ -252,7 +277,7 @@ async function run() {
   await wv.evaluateJavaScript(PARSER);
   const shown = wv.present(true);
   await askToken();
-  await check();
+  want(first);
   await shown;
 }
 

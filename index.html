@@ -278,7 +278,17 @@ function syncAck(){if(!st.loaded||!Object.keys(st.seats||{}).length)return;const
   const n=[...live].filter(k=>!ACK.has(k)).length,b=document.getElementById("ackBtn");
   b.hidden=!n;b.querySelector("span").textContent=`깜빡임 리셋 (${n})`}
 document.getElementById("ackBtn").onclick=()=>{flaggedKeys().forEach(k=>ACK.add(k));saveAck();render()};
-function render(){syncAck();keyRow();grid();panel();stamp()}
+// 아이폰 앱 안에서는, 아직 확인하지 않은 달로 넘기면 그 달만 확인을 요청한다
+function askMonth(){
+  if(!window.__inScriptable)return;
+  const mk=MONTHS[st.m];window.__asked=window.__asked||new Set();
+  if((window.__checked||[]).includes(mk)||window.__asked.has(mk))return;
+  clearTimeout(window.__askT);
+  window.__askT=setTimeout(()=>{ // 빠르게 여러 달을 넘길 때는 멈춘 달만 확인
+    if(MONTHS[st.m]!==mk||window.__asked.has(mk))return;
+    window.__asked.add(mk);location.href="fishing://month?ym="+mk},900);
+}
+function render(){syncAck();keyRow();grid();panel();stamp();askMonth()}
 document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
 document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
@@ -309,7 +319,7 @@ window.__setChecking=(on,msg)=>{chk.classList.toggle("busy",!!on);chkTxt.textCon
 const SCRIPT_NAME="낚시배 빈자리";
 chk.href="scriptable:///run/"+encodeURIComponent(SCRIPT_NAME);
 chk.removeAttribute("target");
-chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))location.href="fishing://check"}};
+chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))location.href="fishing://check?ym="+MONTHS[st.m]}};
 load(false);
 if(!IN_APP){
   setInterval(()=>{if(!document.hidden)load(false)},10*60*1000);
