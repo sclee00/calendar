@@ -237,7 +237,8 @@ async function main(wv, say) {
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
   const settings = loadSettings();
-  let ahead = [1, 2, 3, 6].includes(settings.ahead) ? settings.ahead : 3; // 처음 열 때 확인할 기간(설정에서 변경)
+  const okAhead = (n) => Number.isInteger(n) && n >= 1 && n <= 12;
+  let ahead = okAhead(settings.ahead) ? settings.ahead : 1; // 처음 열 때 확인할 기간(기본 1개월, 설정에서 1~12개월)
   const all = monthsAhead();
   let first = all.slice(0, ahead);
   const checked = new Set(first.map(([y, m]) => ymKey(y, m)));
@@ -302,7 +303,7 @@ async function main(wv, say) {
     }
     if (u.startsWith("fishing://settings")) { // 설정: 확인 기간 변경
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
-      if ([1, 2, 3, 6].includes(n)) {
+      if (okAhead(n)) {
         ahead = n; saveSettings({ ...loadSettings(), ahead: n });
         first = all.slice(0, n);
         const more = first.filter(([y, m]) => !checked.has(ymKey(y, m))); // 늘린 만큼만 바로 확인
