@@ -197,20 +197,51 @@ async function upload(data) {
   return true;
 }
 
+const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
+
 async function run() {
-  // 1) 마지막 결과(아이폰에 저장된 것, 없으면 웹 캘린더의 것)로 캘린더를 먼저 띄운다
+  if (!config.runsInApp) {
+    const a = new Alert();
+    a.title = "앱에서 실행해 주세요";
+    a.message = "단축어의 'Run Script' 동작에서 '앱에서 실행(Run In App)'을 켜야 캘린더가 보입니다.";
+    a.addAction("확인");
+    await a.presentAlert();
+    return;
+  }
+  const wv = new WebView();
+  // 1) 바로 '불러오는 중' 화면을 띄운다 (빈 화면 방지)
+  await wv.loadHTML(LOADING);
+  const shown = wv.present(true);
+  const say = (t) => { console.log(t); return wv.evaluateJavaScript(`(function(){var m=document.getElementById("m");if(m)m.textContent=${JSON.stringify(t)};return 1})()`).catch(() => null); };
+  try {
+    await main(wv, say);
+  } catch (e) {
+    console.error(e);
+    await say("오류: " + (e && e.message ? e.message : e));
+    const a = new Alert();
+    a.title = "실행 중 오류";
+    a.message = String(e && e.message ? e.message : e);
+    a.addAction("확인");
+    await a.presentAlert();
+  }
+  await shown;
+}
+
+async function main(wv, say) {
+  // 마지막 결과(아이폰에 저장된 것, 없으면 웹 캘린더의 것)로 캘린더를 먼저 띄운다
+  await say("마지막 결과 불러오는 중…");
   let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
-
   const AHEAD = 3; // 처음에는 이번 달부터 3개월만 확인
   const all = monthsAhead();
   const first = all.slice(0, AHEAD);
   const checked = new Set(first.map(([y, m]) => ymKey(y, m)));
 
+  await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
+  if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
   const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};</script>`;
-  const wv = new WebView();
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -273,12 +304,12 @@ async function run() {
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
+  await say("캘린더 그리는 중…");
   await wv.loadHTML(html.replace("<head>", "<head>" + inject), PAGE);
   await wv.evaluateJavaScript(PARSER);
-  const shown = wv.present(true);
+  console.log("캘린더 표시 완료, 확인 시작");
   await askToken();
   want(first);
-  await shown;
 }
 
 module.exports = { run };
