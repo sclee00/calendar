@@ -13,7 +13,7 @@ const SITES = [
   { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
-const GAP = 800; // 같은 서버에 보내는 요청 사이 간격(ms)
+const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
 
@@ -21,6 +21,9 @@ const fm = FileManager.local();
 const DIR = fm.joinPath(fm.documentsDirectory(), "fishing-seats");
 if (!fm.fileExists(DIR)) fm.createDirectory(DIR, true);
 const CACHE = fm.joinPath(DIR, "seats.json");
+const SETTINGS = fm.joinPath(DIR, "settings.json");
+const loadSettings = () => { try { return JSON.parse(fm.readString(SETTINGS)) || {}; } catch (e) { return {}; } };
+const saveSettings = (o) => fm.writeString(SETTINGS, JSON.stringify(o));
 
 const pad = (n) => String(n).padStart(2, "0");
 const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
@@ -233,15 +236,16 @@ async function main(wv, say) {
   let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
-  const AHEAD = 3; // 처음에는 이번 달부터 3개월만 확인
+  const settings = loadSettings();
+  let ahead = [1, 2, 3, 6].includes(settings.ahead) ? settings.ahead : 3; // 처음 열 때 확인할 기간(설정에서 변경)
   const all = monthsAhead();
-  const first = all.slice(0, AHEAD);
+  let first = all.slice(0, ahead);
   const checked = new Set(first.map(([y, m]) => ymKey(y, m)));
 
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};</script>`;
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -254,8 +258,8 @@ async function main(wv, say) {
     const results = {}, errors = [], sources = { ...(old.sources || {}) };
     const doing = {};
     const show = () => js(`__setChecking(true, ${JSON.stringify("확인 중: " + Object.values(doing).filter(Boolean).join(", "))})`);
-    // 같은 서버(선상24끼리, 더피싱끼리)는 하나씩, 서로 다른 서버는 동시에
-    const groups = [SITES.filter((x) => x.kind === "ss"), SITES.filter((x) => x.kind === "tf")];
+    // 네 사이트를 동시에 확인하되, 한 사이트 안에서는 요청을 하나씩 보낸다
+    const groups = SITES.map((x) => [x]);
     await Promise.all(groups.map(async (group, gi) => {
       for (const site of group) {
         try {
@@ -295,6 +299,16 @@ async function main(wv, say) {
       const v = ymOf(u);
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list); return false;
+    }
+    if (u.startsWith("fishing://settings")) { // 설정: 확인 기간 변경
+      const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
+      if ([1, 2, 3, 6].includes(n)) {
+        ahead = n; saveSettings({ ...loadSettings(), ahead: n });
+        first = all.slice(0, n);
+        const more = first.filter(([y, m]) => !checked.has(ymKey(y, m))); // 늘린 만큼만 바로 확인
+        if (more.length) want(more);
+      }
+      return false;
     }
     if (u.startsWith("fishing://month")) { // 캘린더를 아직 확인하지 않은 달로 넘김
       const v = ymOf(u);

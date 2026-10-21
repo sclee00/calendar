@@ -67,6 +67,12 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
   .upd .btn[hidden]{display:none!important}
   .kbtn{font-size:12px;padding:2px 8px}
 }
+.setp{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px}
+.setp small{flex:1 1 100%;color:var(--muted);font-size:12px}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;border:0;background:var(--surface);color:var(--ink);padding:5px 12px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .tog{min-height:32px;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
 .tog[aria-pressed="true"]{background:var(--open);border-color:var(--open);color:var(--open-ink)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -138,12 +144,18 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <h1>연안부두 낚시배 빈자리</h1>
     <div class="upd">
       <span id="stamp">예약 현황을 불러오는 중…</span>
-      <button class="btn" id="refresh" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span>새로고침</span></button>
+      <button class="btn" id="refresh" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span>새로고침</span></button>
       <button class="btn ghost" id="ackBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg><span>깜빡임 리셋</span></button>
       <a class="btn ghost" id="check" href="#"><span>지금 확인</span></a>
+      <button class="btn ghost" id="setBtn" type="button" hidden aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>설정</span></button>
     </div>
   </div>
   <p class="notice" id="notice" hidden></p>
+  <div class="setp" id="setPanel" hidden>
+    <span>처음 열 때 확인할 기간</span>
+    <div class="seg" id="aheadSeg" role="group" aria-label="확인 기간"></div>
+    <small>짧을수록 빠릅니다. 그 뒤 달은 캘린더를 넘기면 그때 확인해요.</small>
+  </div>
   <div class="meta" id="meta"></div>
   <div class="bar">
     <button class="tog" id="onlyOpen" aria-pressed="false" type="button">자리 있는 배만</button>
@@ -320,6 +332,16 @@ const SCRIPT_NAME="낚시배 빈자리";
 chk.href="scriptable:///run/"+encodeURIComponent(SCRIPT_NAME);
 chk.removeAttribute("target");
 chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))location.href="fishing://check?ym="+MONTHS[st.m]}};
+// 설정(아이폰 앱 안에서만): 처음 열 때 확인할 기간
+if(IN_APP){
+  const sb=document.getElementById("setBtn"),sp=document.getElementById("setPanel"),seg=document.getElementById("aheadSeg");
+  sb.hidden=false;
+  sb.onclick=()=>{sp.hidden=!sp.hidden;sb.setAttribute("aria-expanded",String(!sp.hidden))};
+  const drawSeg=()=>{seg.innerHTML="";[1,2,3,6].forEach(n=>{const b=document.createElement("button");b.type="button";b.id="ahead"+n;
+    b.textContent=n+"개월";b.setAttribute("aria-pressed",String((window.__ahead||3)===n));
+    b.onclick=()=>{window.__ahead=n;drawSeg();location.href="fishing://settings?ahead="+n};seg.append(b)})};
+  drawSeg();
+}
 load(false);
 if(!IN_APP){
   setInterval(()=>{if(!document.hidden)load(false)},10*60*1000);
