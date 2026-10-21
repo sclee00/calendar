@@ -57,7 +57,7 @@ async function get(url) {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return await r.text();
     } catch (e) {
-      if (attempt) throw new Error(`${url} — ${e.message}`);
+      if (attempt) throw new Error(`${url} — ${e.message}${e.cause ? " (" + (e.cause.code || e.cause.message) + ")" : ""}`);
       await new Promise((res) => setTimeout(res, 2000));
     }
   }
