@@ -204,11 +204,10 @@ const LOADING = `<!doctype html><meta name="viewport" content="width=device-widt
 
 async function run() {
   if (!config.runsInApp) {
-    const a = new Alert();
-    a.title = "앱에서 실행해 주세요";
-    a.message = "단축어의 'Run Script' 동작에서 '앱에서 실행(Run In App)'을 켜야 캘린더가 보입니다.";
-    a.addAction("확인");
-    await a.presentAlert();
+    // 단축어(Siri) 안에서는 화면·알림창을 띄울 수 없다 → Scriptable 앱을 열어 다시 실행
+    const url = "scriptable:///run/" + encodeURIComponent(Script.name());
+    try { Safari.open(url); } catch (e) {}
+    Script.setShortcutOutput("단축어의 Run Script 동작에서 '앱에서 실행(Run In App)'을 켜 주세요.");
     return;
   }
   const wv = new WebView();

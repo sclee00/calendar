@@ -329,7 +329,7 @@ btn.onclick=()=>load(true);
 window.__applySeats=d=>{window.__seatsData=d;applyData(d)};
 const chk=document.getElementById("check"),chkTxt=chk.querySelector("span");
 window.__setChecking=(on,msg)=>{chk.classList.toggle("busy",!!on);chkTxt.textContent=on?"확인 중…":"지금 확인";notice(msg||"")};
-const SCRIPT_NAME="낚시배 빈자리";
+const SCRIPT_NAME="낚시배예약현황"; // 아이폰 Scriptable에 저장한 스크립트 이름
 chk.href="scriptable:///run/"+encodeURIComponent(SCRIPT_NAME);
 chk.removeAttribute("target");
 chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))location.href="fishing://check?ym="+MONTHS[st.m]}};
