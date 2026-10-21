@@ -55,6 +55,9 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .key{display:flex;flex-wrap:wrap;gap:4px;align-items:center;flex:1;min-width:0}
 .kbtn{font:inherit;font-size:12.5px;color:var(--ink);border:1px solid var(--line);background:var(--surface);padding:2px 9px;cursor:pointer;border-radius:999px}
 .kbtn[aria-pressed="false"]{opacity:.35}
+.spkey{display:flex;gap:4px;flex-wrap:wrap}
+.spbtn{font:inherit;font-size:12.5px;color:var(--ink);border:1px solid var(--line);background:var(--surface);padding:1px 9px 1px 5px;cursor:pointer;border-radius:999px;display:flex;align-items:center;gap:4px}
+.spbtn[aria-pressed="false"]{opacity:.35}
 .tog{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
 .tog[aria-pressed="true"]{background:var(--open);border-color:var(--open);color:var(--open-ink)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -135,6 +138,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <div class="meta" id="meta"></div>
   <div class="bar">
     <button class="tog" id="onlyOpen" aria-pressed="false" type="button">자리 있는 배만</button>
+    <div class="spkey" id="spKey" role="group" aria-label="어종"></div>
     <div class="key" id="key" role="group" aria-label="선박"></div>
   </div>
 
@@ -179,8 +183,10 @@ const LBL={open:"자리 있음",full:"마감",cancel:"출조 취소"};
 const status=v=>v===null||v===undefined?null:v==="x"?"cancel":v>0?"open":"full";
 const pad=n=>String(n).padStart(2,"0");
 const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,seats:{},status:null,loaded:false};
+let _spSaved=null;try{_spSaved=JSON.parse(localStorage.getItem("spFilter")||"null")}catch(e){}
+const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,sp:new Set(["g","j","f"]),seats:{},status:null,loaded:false};
 try{if(window.matchMedia("(max-width:520px)").matches)st.only=true}catch(e){}
+if(Array.isArray(_spSaved)&&_spSaved.length)st.sp=new Set(_spSaved);
 
 function badge(b,cls,sp,title,style=""){
   const S=SHAPE[sp]||SHAPE.j;
@@ -189,7 +195,7 @@ function badge(b,cls,sp,title,style=""){
 }
 const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
-const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]);return{b,s,re:s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(`${mk}|${b.name}|${d}`),sp:(B.sp||"")[d-1]||"j"}}).filter(r=>r.s)};
+const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]);return{b,s,re:s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(`${mk}|${b.name}|${d}`),sp:(B.sp||"")[d-1]||"j"}}).filter(r=>r.s&&st.sp.has(r.sp))};
 
 function meta(){
   const demo={ab:""};
@@ -199,7 +205,13 @@ function meta(){
     `<span><i class="sw" style="background:var(--open)"></i>자리 있음</span><span><i class="sw blink" style="background:var(--open)"></i>취소로 다시 생긴 자리</span><span><i class="sw" style="background:var(--full)"></i>마감</span><span><i class="sw" style="background:var(--cancel)"></i>취소</span>`+
     `<span>고저차 ${RMIN}<i class="grad" style="background:linear-gradient(90deg,${stops})"></i>${RMAX}cm</span>`;
 }
-function keyRow(){
+function spRow(){
+  const el=document.getElementById("spKey");el.innerHTML="";const demo={ab:""};
+  Object.keys(SP).forEach(k=>{const b=document.createElement("button");b.type="button";b.className="spbtn";b.id="sp-"+k;b.setAttribute("aria-pressed",st.sp.has(k));
+    b.innerHTML=badge(demo,"neutral",k,SP[k],"width:22px;height:15px")+SP[k];
+    b.onclick=()=>{st.sp.has(k)?st.sp.delete(k):st.sp.add(k);if(!st.sp.size)st.sp.add(k);try{localStorage.setItem("spFilter",JSON.stringify([...st.sp]))}catch(e){}render()};el.append(b)});
+}
+function keyRow(){spRow();
   const mk=MONTHS[st.m],M=monthBoats(mk);
   const k=document.getElementById("key");k.innerHTML="";
   BOATS.filter(b=>M[b.name]&&M[b.name].s.some(v=>v!==null)).forEach(b=>{const bt=document.createElement("button");bt.type="button";bt.className="kbtn";bt.id="k"+b.id;bt.setAttribute("aria-pressed",st.on.has(b.id));
