@@ -44,6 +44,7 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .btn:disabled{opacity:.55;cursor:default}
 .btn.ghost{background:var(--surface);color:var(--accent);text-decoration:none}
 .btn.busy svg{animation:spin 1s linear infinite}
+.btn.busy{opacity:.7}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.btn.busy svg{animation:none}}
 .upd .err{color:var(--full)}
@@ -139,7 +140,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <span id="stamp">예약 현황을 불러오는 중…</span>
       <button class="btn" id="refresh" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span>새로고침</span></button>
       <button class="btn ghost" id="ackBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg><span>깜빡임 리셋</span></button>
-      <a class="btn ghost" id="check" href="https://claude.ai/artifact/Jj7YpgqvRPMDu9Gq89Esmt" target="_blank" rel="noopener"><span>지금 확인</span></a>
+      <a class="btn ghost" id="check" href="#"><span>지금 확인</span></a>
     </div>
   </div>
   <p class="notice" id="notice" hidden></p>
@@ -165,7 +166,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     </div>
     <aside class="panel" id="panel" aria-live="polite"></aside>
   </div>
-  <p class="foot">20인승 16척 · 정해진 시간마다 자동으로 확인하지 않습니다. '지금 확인'을 누르면 Claude 캘린더가 열리면서 집 컴퓨터가 네 선사 예약 화면을 한 번 읽고, 몇 분 뒤 이 페이지에도 반영됩니다(집 컴퓨터의 Claude 앱이 켜져 있어야 함). 예약 전에는 선사 페이지에서 한 번 더 확인하세요. 제일바다낚시는 어종 표기가 없어 주꾸미·갑오징어로 표시합니다. 고저차: 인천, 그날 가장 높은 만조 − 가장 낮은 간조(국립해양조사원 자료, <a href="https://www.badatime.com/158/daily/2026-10-01" target="_blank" rel="noopener">바다타임</a>).</p>
+  <p class="foot">20인승 16척 · 정해진 시간마다 자동으로 확인하지 않습니다. '지금 확인'을 누르면 아이폰의 Scriptable 앱이 열리면서 아이폰이 직접 네 선사 예약 화면을 한 번 읽어 옵니다(컴퓨터·Claude 필요 없음). 예약 전에는 선사 페이지에서 한 번 더 확인하세요. 제일바다낚시는 어종 표기가 없어 주꾸미·갑오징어로 표시합니다. 고저차: 인천, 그날 가장 높은 만조 − 가장 낮은 간조(국립해양조사원 자료, <a href="https://www.badatime.com/158/daily/2026-10-01" target="_blank" rel="noopener">바다타임</a>).</p>
 </div>
 
 <script>
@@ -286,20 +287,34 @@ meta();render();
 
 const notice=msg=>{const n=document.getElementById("notice");n.textContent=msg;n.hidden=!msg};
 const btn=document.getElementById("refresh"),btnTxt=btn.querySelector("span");
+function applyData(d){
+  st.seats=d.months||{};st.status={updatedAt:d.updatedAt,ok:d.ok,error:(d.errors||[]).join(" / "),sources:d.sources||{}};st.loaded=true;render();
+}
+const IN_APP=!!window.__inScriptable; // 아이폰 Scriptable 앱 안에서 열렸는지
 async function load(manual){
+  if(IN_APP&&window.__seatsData){applyData(window.__seatsData);return}
   if(manual){btn.disabled=true;btn.classList.add("busy");btnTxt.textContent="불러오는 중"}
   try{
     const r=await fetch("data/seats.json?t="+Date.now(),{cache:"no-store"});
     if(!r.ok)throw new Error(r.status);
-    const d=await r.json();
-    st.seats=d.months||{};st.status={updatedAt:d.updatedAt,ok:d.ok,error:(d.errors||[]).join(" / "),sources:d.sources||{}};st.loaded=true;notice("");render();
+    applyData(await r.json());notice("");
   }catch(e){st.loaded=true;notice("예약 현황을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");render()}
   finally{btn.disabled=false;btn.classList.remove("busy");btnTxt.textContent="새로고침"}
 }
 btn.onclick=()=>load(true);
+// Scriptable 앱이 새로 확인한 결과를 넣어 줄 때 쓰는 연결 고리
+window.__applySeats=d=>{window.__seatsData=d;applyData(d)};
+const chk=document.getElementById("check"),chkTxt=chk.querySelector("span");
+window.__setChecking=(on,msg)=>{chk.classList.toggle("busy",!!on);chkTxt.textContent=on?"확인 중…":"지금 확인";notice(msg||"")};
+const SCRIPT_NAME="낚시배 빈자리";
+chk.href="scriptable:///run/"+encodeURIComponent(SCRIPT_NAME);
+chk.removeAttribute("target");
+chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))location.href="fishing://check"}};
 load(false);
-setInterval(()=>{if(!document.hidden)load(false)},10*60*1000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)load(false)});
+if(!IN_APP){
+  setInterval(()=>{if(!document.hidden)load(false)},10*60*1000);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)load(false)});
+}
 </script>
 
 </body>
