@@ -1,8 +1,6 @@
 name: 빈자리 업데이트
 
 on:
-  schedule:
-    - cron: "17 * * * *"   # 매시 17분(UTC 기준, 한국 시각도 매시 17분)
   workflow_dispatch: {}
   push:
     branches: [main]

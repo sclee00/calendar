@@ -50,7 +50,11 @@ const kstIso = () => {
   return d.toISOString().replace(/\.\d+Z$/, "+09:00");
 };
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const GAP = 1200; // 요청 사이 간격(ms) — 사람이 페이지를 넘기는 정도로 천천히
+
 async function get(url) {
+  await sleep(GAP);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const r = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9" }, signal: AbortSignal.timeout(30000) });
@@ -82,8 +86,11 @@ function collector() {
 
 async function scrapeSunsang24(host) {
   const { put, done } = collector();
+  let seen = false, empty = 0;
   for (const [y, m] of MONTHS) {
+    if (seen && empty >= 1) break; // 예약이 열린 마지막 달 다음에서 멈춤
     const $ = cheerio.load(await get(`https://${host}/ship/schedule_fleet/${y}${pad(m)}`));
+    let n = 0;
     $('table[class^="ship_unit"]').each((_, t) => {
       const T = $(t);
       const name = norm(T.find(".ship_info .title").first().text());
@@ -93,8 +100,11 @@ async function scrapeSunsang24(host) {
       if (mm !== m) return;
       const rem = T.find(".remain");
       const txt = rem.length ? rem.first().text() : T.find(".ship_info2").first().text();
-      put(yy, mm, dd, name, stc(txt), spc(T.find("#fish").first().text()));
+      const st = stc(txt);
+      if (st !== null) n++;
+      put(yy, mm, dd, name, st, spc(T.find("#fish").first().text()));
     });
+    if (n) { seen = true; empty = 0; } else empty++;
   }
   return done();
 }
@@ -106,7 +116,8 @@ async function scrapeTheFishing(host) {
     let found = 0;
     const urls = [];
     for (let d = 1; d <= daysIn(y, m); d += 4) urls.push(`https://${host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`);
-    const pages = await Promise.all(urls.map(get));
+    const pages = [];
+    for (const u of urls) pages.push(await get(u)); // 한 번에 하나씩
     for (const html of pages) {
       const $ = cheerio.load(html);
       let day = null;
