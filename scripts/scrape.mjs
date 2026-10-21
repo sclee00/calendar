@@ -139,12 +139,28 @@ let old = { months: {} };
 try { old = JSON.parse(fs.readFileSync(OUT, "utf8")); } catch {}
 const oldMonths = old.months || {};
 
-const results = {}, errors = [];
+// 칸피싱·제일바다낚시(더피싱)는 해외 IP 접속을 막아서, 집 컴퓨터(한국)에서 읽은 data/korea.json을 쓴다.
+// 형식: { updatedAt, khan: {"YYYY-MM": {배: {s, sp}}}, jeil: {...} }
+let korea = null;
+try { korea = JSON.parse(fs.readFileSync(new URL("../data/korea.json", import.meta.url), "utf8")); } catch {}
+const reachable = async (host) => {
+  try { await fetch(`https://${host}/`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8000) }); return true; } catch { return false; }
+};
+
+const results = {}, errors = [], sources = { ...(old.sources || {}) };
 for (const site of SITES) {
   try {
+    if (site.kind === "thefishing" && !(await reachable(site.host))) {
+      if (!korea?.[site.id]) throw new Error("해외 접속 차단 — 집 컴퓨터 수집 데이터 없음");
+      results[site.id] = korea[site.id];
+      sources[site.id] = korea.updatedAt;
+      console.log(`${site.host}: 해외 접속 차단 → 집 컴퓨터 수집분(${korea.updatedAt}) 사용`);
+      continue;
+    }
     results[site.id] = site.kind === "sunsang24" ? await scrapeSunsang24(site.host) : await scrapeTheFishing(site.host);
     const n = Object.values(results[site.id]).reduce((a, mo) => a + Object.keys(mo).length, 0);
     if (!n) throw new Error("읽은 배가 없음 (사이트 구조가 바뀌었을 수 있음)");
+    sources[site.id] = kstIso();
     console.log(`${site.host}: ${n}개 월·배 조합`);
   } catch (e) {
     delete results[site.id];
@@ -189,7 +205,7 @@ for (const k of [...allKeys].sort()) {
   if (Object.keys(boats).length) months[k] = { boats, reopen };
 }
 
-const data = { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, months };
+const data = { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, sources, months };
 fs.mkdirSync(new URL("../data/", import.meta.url), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(data));
 console.log(`저장: ${Object.keys(months).length}개월, 다시 열린 자리 ${reopened.length}건${errors.length ? ", 실패 " + errors.length + "곳" : ""}`);

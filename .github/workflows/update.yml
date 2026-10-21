@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "17 * * * *"   # 매시 17분(UTC 기준, 한국 시각도 매시 17분)
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ["data/korea.json"]   # 집 컴퓨터가 칸피싱·제일 데이터를 올리면 바로 합침
 
 permissions:
   contents: write
@@ -30,4 +33,4 @@ jobs:
           git add data/seats.json
           if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
           git commit -m "빈자리 업데이트 $(TZ=Asia/Seoul date '+%m/%d %H:%M')"
-          git push
+          git pull --rebase -q origin main && git push
