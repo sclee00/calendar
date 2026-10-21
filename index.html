@@ -85,6 +85,8 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 .chip{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:2px 9px;cursor:pointer;line-height:20px}
 .chip[aria-pressed="false"]{opacity:.35}
+.kbtn.kall{font-weight:600;color:var(--accent);border-color:var(--accent)}
+.kbtn.kall[aria-pressed]{opacity:1}
 .tog{min-height:32px;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
 .tog[aria-pressed="true"]{background:var(--open);border-color:var(--open);color:var(--open-ink)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -234,8 +236,10 @@ const LBL={open:"자리 있음",full:"마감",cancel:"출조 취소"};
 const status=v=>v===null||v===undefined?null:v==="x"?"cancel":v>0?"open":"full";
 const pad=n=>String(n).padStart(2,"0");
 const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+let _onSaved=null;try{_onSaved=JSON.parse(localStorage.getItem("boatsOn")||"null")}catch(e){}
 let _spSaved=null;try{_spSaved=JSON.parse(localStorage.getItem("spFilter")||"null")}catch(e){}
 const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,sp:new Set(["j","f","u"]),seats:{},status:null,loaded:false};
+if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.name)).map(b=>b.id));
 if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
 function badge(b,cls,sp,title,style=""){
@@ -265,9 +269,19 @@ function keyRow(){spRow();
   const mk=MONTHS[st.m],M=monthBoats(mk);
   const k=document.getElementById("key");k.innerHTML="";
   BOATS.filter(b=>M[b.name]&&M[b.name].s.some(v=>v!==null)).forEach(b=>{const bt=document.createElement("button");bt.type="button";bt.className="kbtn";bt.id="k"+b.id;bt.setAttribute("aria-pressed",st.on.has(b.id));
-    bt.textContent=b.name;bt.onclick=()=>{st.on.has(b.id)?st.on.delete(b.id):st.on.add(b.id);render()};k.append(bt)});
+    bt.textContent=b.name;bt.onclick=()=>{st.on.has(b.id)?st.on.delete(b.id):st.on.add(b.id);saveOn();render()};k.append(bt)});
+  // 모두 선택 / 모두 해제
+  const vis=BOATS.filter(b=>M[b.name]&&M[b.name].s.some(v=>v!==null));
+  if(vis.length){
+    const allOn=vis.every(b=>st.on.has(b.id));
+    const t=document.createElement("button");t.type="button";t.className="kbtn kall";t.id="kAll";
+    t.textContent=allOn?"모두 해제":"모두 선택";
+    t.onclick=()=>{if(allOn)vis.forEach(b=>st.on.delete(b.id));else vis.forEach(b=>st.on.add(b.id));saveOn();render()};
+    k.prepend(t);
+  }
   document.getElementById("onlyOpen").setAttribute("aria-pressed",st.only);
 }
+function saveOn(){try{localStorage.setItem("boatsOn",JSON.stringify(BOATS.filter(b=>st.on.has(b.id)).map(b=>b.name)))}catch(e){}}
 function grid(){
   const mk=MONTHS[st.m],[Y,M]=mk.split("-").map(Number);
   document.getElementById("mtitle").textContent=`${Y}년 ${M}월`;
