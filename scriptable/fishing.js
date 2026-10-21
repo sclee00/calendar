@@ -53,12 +53,30 @@ async function get(url) {
 }
 
 // WebView(WebKit) 안에서 DOMParser로 HTML을 읽는 함수. 브라우저용 수집 코드와 같은 규칙.
+function classifySpecies(primary, fallback) {
+  // 어종 분류: f = 물고기(광어·우럭 등), j = 주꾸미·갑오징어 등 두족류, u = 어종 미표기
+  // primary(어종 칸)를 먼저 보고, 비어 있거나 모르는 말이면 fallback(공지·행 글자)에서 찾는다. 둘 다 없으면 추측하지 않고 u.
+  const FISH = /광어|우럭|농어|민어|참돔|도미|타이라바|백조기|조기|삼치|부시리|방어|대구|열기|볼락|노래미|놀래미|우럭광어|광우|우광|외수질|다운샷|지깅|라이트지깅|침선|생미끼|선상낚시|원투|흘림|외줄/;
+  const CEPH = /주꾸미|쭈꾸미|쭈구미|쭈갑|갑쭈|쭈\.갑|갑\.쭈|갑오징어|갑오|문어|한치|오징어|에기|쭈낚/;
+  const pick = (t) => {
+    t = String(t || "").replace(/\s+/g, "");
+    if (!t) return "u";
+    const f = t.search(FISH), c = t.search(CEPH);
+    if (f < 0 && c < 0) return "u";
+    if (f < 0) return "j";
+    if (c < 0) return "f";
+    return f < c ? "f" : "j"; // 둘 다 있으면 먼저 적힌 쪽
+  };
+  const a = pick(primary);
+  return a !== "u" ? a : pick(fallback);
+}
+
 const PARSER = `
 window.__fishParse = function (kind, html, y, m) {
   const KEEP = ${JSON.stringify(KEEP)};
   const sq = s => (s || "").replace(/\\s+/g, "");
   const norm = s => { s = sq(s).replace(/\\(.*$/, ""); return KEEP.find(k => s === sq(k) || s.startsWith(sq(k))) || null; };
-  const spc = t => { t = t || ""; if (/광어|우럭|농어|외수질|다운샷|지깅/.test(t)) return "f"; if (/주꾸미|쭈꾸미/.test(t)) return "j"; if (/갑오징어/.test(t)) return "g"; return "j"; };
+  const spc = ${classifySpecies.toString()};
   const stc = t => { t = sq(t); const mm = t.match(/남은자리(\\d+)/); if (mm) return +mm[1]; if (/예약마감|예약완료|마감/.test(t)) return 0; if (/기상|취소|점검|휴무|휴항/.test(t)) return "x"; return null; };
   const doc = new DOMParser().parseFromString(html, "text/html");
   const rows = []; let found = 0;
@@ -69,7 +87,7 @@ window.__fishParse = function (kind, html, y, m) {
       const [yy, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
       const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
       if (st !== null) found++;
-      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent)]);
+      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || ""))]);
     });
   } else {
     let day = null;
@@ -82,7 +100,8 @@ window.__fishParse = function (kind, html, y, m) {
       const last = tds[tds.length - 1];
       const alt = [...last.querySelectorAll("img")].map(i => i.alt).join(" ") + " " + last.textContent;
       let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach(i => { kind2 = i.closest("tr").textContent; });
-      rows.push([dd, name, stc(alt), spc(kind2)]); found++;
+      const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map(i => i.alt || "").join(" ") + " " + tds[1].textContent;
+      rows.push([dd, name, stc(alt), spc(kind2, rowText)]); found++;
     });
   }
   return { rows, found };
@@ -204,14 +223,14 @@ async function upload(data) {
 // ───────────────────────── 빈자리 알림(위젯·단축어 자동화) ─────────────────────────
 // 켜 두면 홈 화면 위젯이 새로 고쳐질 때 정해 둔 조건의 날짜만 확인하고, 맞는 자리가 생기면 알림을 보낸다.
 const WATCH_STATE = fm.joinPath(DIR, "watch-state.json");
-const spOf2 = (c) => (c === "f" ? "f" : "j");
+const spOf2 = (c) => (c === "f" ? "f" : c === "u" ? "u" : "j");
 const strip = (h) => (h || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
 // WebView 없이 쓰는 분석기(위젯·단축어에서는 화면 요소를 못 쓸 수 있어서)
 function regexParse(kind, html, y, m) {
   const sq = (s) => (s || "").replace(/\s+/g, "");
   const norm = (s) => { s = sq(s).replace(/\(.*$/, ""); return KEEP.find((k) => s === sq(k) || s.startsWith(sq(k))) || null; };
-  const spc = (t) => { t = t || ""; if (/광어|우럭|농어|외수질|다운샷|지깅/.test(t)) return "f"; if (/주꾸미|쭈꾸미/.test(t)) return "j"; if (/갑오징어/.test(t)) return "g"; return "j"; };
+  const spc = classifySpecies;
   const stc = (t) => { t = sq(t); const mm = t.match(/남은자리(\d+)/); if (mm) return +mm[1]; if (/예약마감|예약완료|마감/.test(t)) return 0; if (/기상|취소|점검|휴무|휴항/.test(t)) return "x"; return null; };
   const rows = []; let found = 0;
   if (kind === "ss") {
@@ -223,7 +242,7 @@ function regexParse(kind, html, y, m) {
       const info = c.match(/class="ship_info2"[\s\S]*?<\/td>/);
       const st = stc(strip(rem ? rem[0] : info ? info[0] : ""));
       if (st !== null) found++;
-      rows.push([+sd[3], name, st, spc(strip((c.match(/id="fish"[^>]*>([\s\S]*?)<\/div>/) || [])[1]))]);
+      rows.push([+sd[3], name, st, spc(strip((c.match(/id="fish"[^>]*>([\s\S]*?)<\/div>/) || [])[1]), strip((c.match(/class="small_event"[\s\S]*?<\/li>/) || [""])[0]))]);
     });
   } else {
     const parts = html.split(/<a name="(\d{8})"/);
@@ -237,7 +256,8 @@ function regexParse(kind, html, y, m) {
         const last = cells.length > 1 ? cells[cells.length - 2] : seg;
         const alt = [...last.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(last);
         const kind2 = strip((seg.match(/alt="낚시종류"[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/) || [])[1]);
-        rows.push([+day.slice(6), sp.name, stc(alt), spc(kind2)]); found++;
+        const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
+        rows.push([+day.slice(6), sp.name, stc(alt), spc(kind2, rowText)]); found++;
       });
     }
   }
@@ -280,7 +300,7 @@ async function watch() {
 
   const days = watchDays(cfg);
   const boats = Array.isArray(cfg.boats) && cfg.boats.length ? cfg.boats : KEEP;
-  const sps = Array.isArray(cfg.sp) && cfg.sp.length ? cfg.sp : ["j", "f"];
+  const sps = Array.isArray(cfg.sp) && cfg.sp.length ? cfg.sp : ["j", "f", "u"];
   const min = Math.max(1, +cfg.min || 1);
   const want = new Set(days.map(([y, m, d]) => `${ymKey(y, m)}|${d}`));
   const parse = await makeParser();

@@ -19,13 +19,24 @@ const norm = (s) => {
   s = squash(s).replace(/\(.*$/, "");
   return KEEP.find((k) => s === squash(k) || s.startsWith(squash(k))) || null;
 };
-const spc = (t) => {
-  t = t || "";
-  if (/광어|우럭|농어|외수질|다운샷|지깅/.test(t)) return "f";
-  if (/주꾸미|쭈꾸미/.test(t)) return "j";
-  if (/갑오징어/.test(t)) return "g";
-  return "j";
-};
+function classifySpecies(primary, fallback) {
+  // 어종 분류: f = 물고기(광어·우럭 등), j = 주꾸미·갑오징어 등 두족류, u = 어종 미표기
+  // primary(어종 칸)를 먼저 보고, 비어 있거나 모르는 말이면 fallback(공지·행 글자)에서 찾는다. 둘 다 없으면 추측하지 않고 u.
+  const FISH = /광어|우럭|농어|민어|참돔|도미|타이라바|백조기|조기|삼치|부시리|방어|대구|열기|볼락|노래미|놀래미|우럭광어|광우|우광|외수질|다운샷|지깅|라이트지깅|침선|생미끼|선상낚시|원투|흘림|외줄/;
+  const CEPH = /주꾸미|쭈꾸미|쭈구미|쭈갑|갑쭈|쭈\.갑|갑\.쭈|갑오징어|갑오|문어|한치|오징어|에기|쭈낚/;
+  const pick = (t) => {
+    t = String(t || "").replace(/\s+/g, "");
+    if (!t) return "u";
+    const f = t.search(FISH), c = t.search(CEPH);
+    if (f < 0 && c < 0) return "u";
+    if (f < 0) return "j";
+    if (c < 0) return "f";
+    return f < c ? "f" : "j"; // 둘 다 있으면 먼저 적힌 쪽
+  };
+  const a = pick(primary);
+  return a !== "u" ? a : pick(fallback);
+}
+const spc = classifySpecies;
 const stc = (t) => {
   t = squash(t);
   const m = t.match(/남은자리(\d+)/);
@@ -102,7 +113,7 @@ async function scrapeSunsang24(host) {
       const txt = rem.length ? rem.first().text() : T.find(".ship_info2").first().text();
       const st = stc(txt);
       if (st !== null) n++;
-      put(yy, mm, dd, name, st, spc(T.find("#fish").first().text()));
+      put(yy, mm, dd, name, st, spc(T.find("#fish").first().text(), T.find(".fishspecies").first().text() + " " + T.find(".small_event").first().text()));
     });
     if (n) { seen = true; empty = 0; } else empty++;
   }
@@ -135,7 +146,8 @@ async function scrapeTheFishing(host) {
         const alt = last.find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + last.text();
         let kind = "";
         tds.eq(1).find('img[alt="낚시종류"]').each((_, i) => { kind = $(i).closest("tr").text(); });
-        put(yy, mm, dd, name, stc(alt), spc(kind));
+        const rowText = tds.first().text() + " " + tds.eq(1).find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + tds.eq(1).text();
+        put(yy, mm, dd, name, stc(alt), spc(kind, rowText));
         found++;
       });
     }

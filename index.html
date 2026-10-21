@@ -218,12 +218,13 @@ const ORDER=[
  ["모비딕호","jeil","모비"],["마루호","jeil","마루"],["스모키호","jeil","스모"],["로또호","jeil","로또"]];
 const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab}));
 const U={luk:"https://lukina.sunsang24.com/ship/schedule_fleet",dy:"https://dyfishing.sunsang24.com/ship/schedule_fleet",khan:"https://khanfishing.com/index.php?mid=bk",jeil:"https://jnaksi.com/index.php?mid=bk"};
-const SP={j:"주꾸미·갑오징어",f:"광어·우럭"};
-const spOf=c=>c==="f"?"f":"j"; // 갑오징어(g)는 주꾸미 아이콘으로 통합
+const SP={j:"주꾸미·갑오징어",f:"광어·우럭 등 물고기",u:"어종 미표기"};
+const spOf=c=>c==="f"?"f":c==="u"?"u":"j"; // 갑오징어(g)는 주꾸미 아이콘으로 통합, u는 사이트에 어종이 없음
 const SHAPE={
   g:{d:"M2 16C2 7.5 10 5 19 5S33 8 35 12L46 9.5 40 14 47 16 40 18 46 22.5 35 20C33 24 28 27 19 27S2 24.5 2 16Z",tx:18,ty:16.5},
   j:{d:"M9 17C7 7 15 2 24 2S41 7 39 17L41 25Q43 30 39 29L35 22 32 30Q30 31 29 29L27 22 24 30 21 22 19 29Q18 31 16 30L13 22 9 29Q5 30 7 25Z",tx:24,ty:12},
-  f:{d:"M3 16C9 5 25 3 35 13L45 6 43 16 45 26 35 19C25 29 9 27 3 16Z",tx:19,ty:16.5}
+  f:{d:"M3 16C9 5 25 3 35 13L45 6 43 16 45 26 35 19C25 29 9 27 3 16Z",tx:19,ty:16.5},
+  u:{d:"M2 17H46L40 28H8Z M23 4V17H25V4Z M25 5L38 15H25Z",tx:24,ty:22}
 };
 // tidal range color: green (small) → red (large)
 const RMIN=200,RMAX=950;
@@ -234,8 +235,8 @@ const status=v=>v===null||v===undefined?null:v==="x"?"cancel":v>0?"open":"full";
 const pad=n=>String(n).padStart(2,"0");
 const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
 let _spSaved=null;try{_spSaved=JSON.parse(localStorage.getItem("spFilter")||"null")}catch(e){}
-const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,sp:new Set(["j","f"]),seats:{},status:null,loaded:false};
-if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length)st.sp=new Set(v)}
+const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,sp:new Set(["j","f","u"]),seats:{},status:null,loaded:false};
+if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
 function badge(b,cls,sp,title,style=""){
   const S=SHAPE[sp]||SHAPE.j;
@@ -372,7 +373,7 @@ if(IN_APP){
 load(false);
 // 빈자리 알림 설정
 if(IN_APP){
-  const W=Object.assign({on:false,interval:60,from:"",to:"",dows:[0,1,2,3,4,5,6],min:1,sp:["j","f"],boats:[],mode:"any"},window.__watch||{});
+  const W=Object.assign({on:false,interval:60,from:"",to:"",dows:[0,1,2,3,4,5,6],min:1,sp:["j","f","u"],boats:[],mode:"any"},window.__watch||{});
   const $=id=>document.getElementById(id);
   const allBoats=window.__boatsAll||BOATS.map(b=>b.name);
   let selBoats=new Set(W.boats&&W.boats.length?W.boats:allBoats),selDows=new Set(W.dows),selSp=new Set(W.sp);
@@ -383,7 +384,7 @@ if(IN_APP){
   const chips=(el,items,set,label)=>{el.innerHTML="";items.forEach(v=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label(v);
     b.setAttribute("aria-pressed",String(set.has(v)));b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);if(!set.size)set.add(v);b.setAttribute("aria-pressed",String(set.has(v)))};el.append(b)})};
   chips($("wDows"),[1,2,3,4,5,6,0],selDows,v=>WD[v]);
-  chips($("wSp"),["j","f"],selSp,v=>SP[v]);
+  chips($("wSp"),["j","f","u"],selSp,v=>SP[v]);
   chips($("wBoats"),allBoats,selBoats,v=>v);
   $("wSave").onclick=()=>{
     const cfg={on:$("wOn").checked,interval:+$("wInt").value,from:$("wFrom").value,to:$("wTo").value,dows:[...selDows],min:+$("wMin").value,
