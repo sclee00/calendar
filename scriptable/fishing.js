@@ -87,7 +87,8 @@ window.__fishParse = function (kind, html, y, m) {
       const [yy, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
       const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
       if (st !== null) found++;
-      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || ""))]);
+      const no = +((t.querySelector(".btn_user_reservation, .btn_ship_reservation, [data-schedule_no]") || {}).dataset?.schedule_no || 0) || null;
+      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || "")), no]);
     });
   } else {
     let day = null;
@@ -110,12 +111,13 @@ true;`;
 
 async function scrapeSite(wv, site, monthList, progress) {
   const out = {};
-  const put = (y, m, d, name, s, sp) => {
+  const put = (y, m, d, name, s, sp, no) => {
     if (!name || s === null) return;
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] = out[k] || {};
     const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
     b.s[d - 1] = s; b.sp[d - 1] = sp;
+    if (no) { b.no = b.no || Array(L).fill(null); b.no[d - 1] = no; }
   };
   const parse = async (html, y, m) =>
     wv.evaluateJavaScript(`__fishParse(${JSON.stringify(site.kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
@@ -124,7 +126,7 @@ async function scrapeSite(wv, site, monthList, progress) {
     await progress(`${site.host} ${m}월`);
     if (site.kind === "ss") {
       const res = await parse(await get(`https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`), y, m);
-      res.rows.forEach(([d, n, s, sp]) => put(y, m, d, n, s, sp));
+      res.rows.forEach(([d, n, s, sp, no]) => put(y, m, d, n, s, sp, no));
       if (res.found) seen = true; else if (seen) break; // 예약이 열린 마지막 달 다음에서 멈춤
     } else {
       let found = 0;
