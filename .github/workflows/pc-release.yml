@@ -1,0 +1,29 @@
+name: PC 버전 만들기
+# pc/ 폴더가 바뀌거나 직접 실행하면 Windows·Mac 실행 파일을 만들어 Releases에 올린다.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["pc/**", ".github/workflows/pc-release.yml"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: 빌드
+        run: bash pc/build.sh
+      - name: Releases에 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="pc-v1.0.${{ github.run_number }}"
+          cd pc/dist
+          gh release create "$tag" --repo "${{ github.repository }}" --latest \
+            --title "PC 버전 ${tag#pc-v}" \
+            --notes "Windows: 낚시배빈자리.exe를 받아 실행하세요. Mac: Apple 칩은 -mac-apple, 인텔은 -mac-intel. 설명은 pc/README.md" \
+            "낚시배빈자리.exe" "낚시배빈자리-mac-apple" "낚시배빈자리-mac-intel"
