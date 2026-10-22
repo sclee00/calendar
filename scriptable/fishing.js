@@ -87,8 +87,7 @@ window.__fishParse = function (kind, html, y, m) {
       const [yy, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
       const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
       if (st !== null) found++;
-      const no = +((t.querySelector(".btn_user_reservation, .btn_ship_reservation, [data-schedule_no]") || {}).dataset?.schedule_no || 0) || null;
-      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || "")), no]);
+      rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || ""))]);
     });
   } else {
     let day = null;
@@ -111,13 +110,12 @@ true;`;
 
 async function scrapeSite(wv, site, monthList, progress) {
   const out = {};
-  const put = (y, m, d, name, s, sp, no) => {
+  const put = (y, m, d, name, s, sp) => {
     if (!name || s === null) return;
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] = out[k] || {};
     const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
     b.s[d - 1] = s; b.sp[d - 1] = sp;
-    if (no) { b.no = b.no || Array(L).fill(null); b.no[d - 1] = no; }
   };
   const parse = async (html, y, m) =>
     wv.evaluateJavaScript(`__fishParse(${JSON.stringify(site.kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
@@ -126,7 +124,7 @@ async function scrapeSite(wv, site, monthList, progress) {
     await progress(`${site.host} ${m}월`);
     if (site.kind === "ss") {
       const res = await parse(await get(`https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`), y, m);
-      res.rows.forEach(([d, n, s, sp, no]) => put(y, m, d, n, s, sp, no));
+      res.rows.forEach(([d, n, s, sp]) => put(y, m, d, n, s, sp));
       if (res.found) seen = true; else if (seen) break; // 예약이 열린 마지막 달 다음에서 멈춤
     } else {
       let found = 0;
@@ -352,41 +350,6 @@ async function watch() {
   return `조건 맞는 자리 ${hits.length}곳, 새 알림 ${fresh.length}곳`;
 }
 
-// ── 예약 도우미 연결 (별도 저장소 sclee00/fishing-b, 'Scriptable 낚시배예약' 스크립트) ──
-const BOOK_RE = /\/mypage\/reservation_ready\/\d+|\/_core\/module\/reservation_boat[^/]*\/popu[p2]\.step1\.php|\/ship\/schedule_fleet\/\d{6}[?#]fb=/;
-const BOOK_PATH = fm.joinPath(fm.documentsDirectory(), "fishing-book-main.js");
-let booking = false, viewClosed = false;
-// 캘린더 화면(wv)을 그대로 이어 써서 예약 도우미를 실행하고, '← 캘린더'를 누르면 캘린더를 다시 그린다.
-async function openBooking(u, wv, render, isBusy) {
-  if (booking) return;
-  if (isBusy()) { // 자리 확인 중에는 같은 화면을 쓰므로 끝난 뒤에
-    wv.evaluateJavaScript(`__setChecking(true, "자리 확인이 끝난 뒤 다시 눌러 주세요")`).catch(() => null);
-    return;
-  }
-  booking = true;
-  try {
-    // 최신 도우미 코드 받기 (실패하면 저장된 것 사용)
-    for (const k of ["fishingb_github_token", TOKEN_KEY]) {
-      if (!Keychain.contains(k)) continue;
-      try {
-        const r = new Request("https://api.github.com/repos/sclee00/fishing-b/contents/book.js?ref=main");
-        r.headers = { Authorization: "Bearer " + Keychain.get(k), Accept: "application/vnd.github.raw", "User-Agent": "scriptable-fishing" };
-        r.timeoutInterval = 8;
-        const s = await r.loadString();
-        if (r.response.statusCode === 200 && s.includes("module.exports")) { fm.writeString(BOOK_PATH, s); break; }
-      } catch (e) {}
-    }
-    if (!fm.fileExists(BOOK_PATH)) { Safari.open(u); return; } // 예약 도우미를 아직 설치하지 않았으면 브라우저로
-    try {
-      await importModule(BOOK_PATH).run({ url: u, wv, closed: () => viewClosed });
-    } catch (e) {
-      console.error(e);
-      Safari.open(u);
-    }
-    if (!viewClosed) await render();
-  } finally { booking = false; }
-}
-
 const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
 
 async function run() {
@@ -411,7 +374,7 @@ async function run() {
   const wv = new WebView();
   // 1) 바로 '불러오는 중' 화면을 띄운다 (빈 화면 방지)
   await wv.loadHTML(LOADING);
-  const shown = wv.present(true).then(() => { viewClosed = true; });
+  const shown = wv.present(true);
   const say = (t) => { console.log(t); return wv.evaluateJavaScript(`(function(){var m=document.getElementById("m");if(m)m.textContent=${JSON.stringify(t)};return 1})()`).catch(() => null); };
   try {
     await main(wv, say);
@@ -443,6 +406,7 @@ async function main(wv, say) {
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -522,20 +486,12 @@ async function main(wv, say) {
       if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
       return false;
     }
-    // 예약 페이지도 Safari로 연다 → Safari의 '낚시배 예약 도우미'(유저스크립트)가 로그인 확인·자동 입력
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
   await say("캘린더 그리는 중…");
-  // 예약 도우미에서 돌아올 때도 최신 결과로 다시 그린다
-  const handler = wv.shouldAllowRequest;
-  async function render() {
-    wv.shouldAllowRequest = handler;
-    const inj = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
-    await wv.loadHTML(html.replace("<head>", "<head>" + inj), PAGE);
-    await wv.evaluateJavaScript(PARSER);
-  }
-  await render();
+  await wv.loadHTML(html.replace("<head>", "<head>" + inject), PAGE);
+  await wv.evaluateJavaScript(PARSER);
   console.log("캘린더 표시 완료, 확인 시작");
   await askToken();
   want(first);

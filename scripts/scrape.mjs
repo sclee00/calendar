@@ -80,14 +80,13 @@ async function get(url) {
 
 function collector() {
   const out = {};
-  const put = (y, m, d, name, s, sp, no) => {
+  const put = (y, m, d, name, s, sp) => {
     if (!name || s === null) return;
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] ??= {};
     const b = (out[k][name] ??= { s: Array(L).fill(null), sp: Array(L).fill("j") });
     b.s[d - 1] = s;
     b.sp[d - 1] = sp;
-    if (no) { b.no ??= Array(L).fill(null); b.no[d - 1] = no; }
   };
   const done = () => {
     for (const k in out) for (const n in out[k]) out[k][n].sp = out[k][n].sp.join("");
@@ -114,8 +113,7 @@ async function scrapeSunsang24(host) {
       const txt = rem.length ? rem.first().text() : T.find(".ship_info2").first().text();
       const st = stc(txt);
       if (st !== null) n++;
-      const no = +(T.find("[data-schedule_no]").first().attr("data-schedule_no") || 0) || null;
-      put(yy, mm, dd, name, st, spc(T.find("#fish").first().text(), T.find(".fishspecies").first().text() + " " + T.find(".small_event").first().text()), no);
+      put(yy, mm, dd, name, st, spc(T.find("#fish").first().text(), T.find(".fishspecies").first().text() + " " + T.find(".small_event").first().text()));
     });
     if (n) { seen = true; empty = 0; } else empty++;
   }
