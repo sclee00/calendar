@@ -522,7 +522,7 @@ async function main(wv, say) {
       if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
       return false;
     }
-    if (BOOK_RE.test(u)) { openBooking(u, wv, render, () => busy || queue.length > 0); return false; } // 예약 페이지 → 예약 도우미(fishing-b)
+    // 예약 페이지도 Safari로 연다 → Safari의 '낚시배 예약 도우미'(유저스크립트)가 로그인 확인·자동 입력
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
