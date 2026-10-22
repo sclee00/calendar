@@ -220,6 +220,18 @@ const ORDER=[
  ["모비딕호","jeil","모비"],["마루호","jeil","마루"],["스모키호","jeil","스모"],["로또호","jeil","로또"]];
 const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab}));
 const U={luk:"https://lukina.sunsang24.com/ship/schedule_fleet",dy:"https://dyfishing.sunsang24.com/ship/schedule_fleet",khan:"https://khanfishing.com/index.php?mid=bk",jeil:"https://jnaksi.com/index.php?mid=bk"};
+// 고른 날짜·배로 바로 가는 주소 (선상24: 그 일정의 예약 화면, 없으면 그 달 일정표)
+const HOST={luk:"https://lukina.sunsang24.com",dy:"https://dyfishing.sunsang24.com",khan:"https://khanfishing.com",jeil:"https://jnaksi.com"};
+const PA={"와이파이호":5264,"욜로호":5725,"시크릿호":5342,"베스트1호":5339,"베스트3호":5340,"제트호":5341,"왕만두호":5283,"모비딕호":4465,"마루호":6233,"스모키호":6232,"로또호":6362}; // 더피싱 배 번호
+function bookUrl(b,mk,d,s){
+  const M=monthBoats(mk)[b.name]||{},no=M.no&&M.no[d-1];
+  if(b.u==="luk"||b.u==="dy"){
+    if(no&&s==="open")return `${HOST[b.u]}/mypage/reservation_ready/${no}`;
+    return `${U[b.u]}/${mk.replace("-","")}`;
+  }
+  // 칸피싱·제일: 예약 목록에서 그 배만, 그 날짜부터 보이게
+  return `${U[b.u]}&year=${mk.slice(0,4)}&month=${mk.slice(5)}&day=${pad(d)}`+(PA[b.name]?`&mode=list&PA_N_UID=${PA[b.name]}#list`:"#list");
+}
 const SP={j:"주꾸미·갑오징어",f:"광어·우럭 등 물고기",u:"어종 미표기"};
 const spOf=c=>c==="f"?"f":c==="u"?"u":"j"; // 갑오징어(g)는 주꾸미 아이콘으로 통합, u는 사이트에 어종이 없음
 const SHAPE={
@@ -310,7 +322,7 @@ function panel(){
   const MB=monthBoats(mk);
   const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
-  h+=rows.length?rows.map(({b,s,sp,n,re})=>`<div class="row">${badge(b,s+(re?" reopen":""),sp,re?"취소로 다시 열림":LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${SP[sp]} · ${s==="open"?n+"석 남음"+(re?" · 취소로 다시 열림":""):LBL[s]}</small></span><a href="${U[b.u]}" target="_blank" rel="noopener" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`).join("")
+  h+=rows.length?rows.map(({b,s,sp,n,re})=>`<div class="row">${badge(b,s+(re?" reopen":""),sp,re?"취소로 다시 열림":LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${SP[sp]} · ${s==="open"?n+"석 남음"+(re?" · 취소로 다시 열림":""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="_blank" rel="noopener" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`).join("")
     :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   document.getElementById("panel").innerHTML=h;
 }
