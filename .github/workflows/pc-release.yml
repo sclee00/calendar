@@ -22,8 +22,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="pc-v1.0.${{ github.run_number }}"
+          # 이전 PC 버전 릴리스는 지운다 (최신 하나만 남김)
+          gh release list --repo "${{ github.repository }}" --limit 50 --json tagName --jq '.[].tagName' \
+            | grep '^pc-v' | while read -r t; do gh release delete "$t" --repo "${{ github.repository }}" --cleanup-tag --yes || true; done
           cd pc/dist
           gh release create "$tag" --repo "${{ github.repository }}" --latest \
             --title "PC 버전 ${tag#pc-v}" \
-            --notes "Windows: 낚시배빈자리.exe를 받아 실행하세요. Mac: Apple 칩은 -mac-apple, 인텔은 -mac-intel. 설명은 pc/README.md" \
-            "낚시배빈자리.exe" "낚시배빈자리-mac-apple" "낚시배빈자리-mac-intel"
+            --notes "Windows: fishing-seats.exe(낚시배 빈자리)를 받아 실행하세요. Mac: Apple 칩은 -mac-apple, 인텔은 -mac-intel. 설명은 pc/README.md" \
+            "fishing-seats.exe" "fishing-seats-mac-apple" "fishing-seats-mac-intel"

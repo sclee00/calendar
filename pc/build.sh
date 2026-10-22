@@ -17,8 +17,8 @@ open("web/index.html", "w", encoding="utf-8").write(s)
 PY
 mkdir -p dist
 [ -f go.mod ] || go mod init fishing-pc >/dev/null 2>&1
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o "dist/낚시배빈자리.exe" .
-GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "dist/낚시배빈자리-mac-apple" .
-GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/낚시배빈자리-mac-intel" .
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o "dist/fishing-seats.exe" .
+GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "dist/fishing-seats-mac-apple" .
+GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/fishing-seats-mac-intel" .
 go build -trimpath -o dist/fishing-linux .
 ls -la dist

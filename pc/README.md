@@ -5,14 +5,14 @@
 - 칸피싱·제일바다낚시의 해외 접속 차단에도 걸리지 않습니다.
 
 ## 설치·실행 (Windows)
-1. [Releases](https://github.com/sclee00/calendar/releases/latest)에서 **낚시배빈자리.exe**를 받습니다.
+1. [Releases](https://github.com/sclee00/calendar/releases/latest)에서 **fishing-seats.exe**를 받습니다.
 2. 아무 폴더(바탕화면 등)에 두고 더블클릭합니다.
    - 처음에는 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르세요. 서명하지 않은 프로그램이라 뜨는 안내입니다.
 3. 기본 브라우저에 캘린더가 열리고, 설정한 기간(기본: 이번 달)을 한 번 확인합니다.
 
 다른 PC에서도 exe만 복사해서 실행하면 됩니다. 확인 결과와 설정은 PC마다 따로 저장됩니다.
 
-Mac은 `낚시배빈자리-mac-apple`(M1 이후) 또는 `낚시배빈자리-mac-intel`을 받습니다. 터미널에서 다음을 한 번 실행한 뒤, 같은 방법으로 실행합니다.
+Mac은 `fishing-seats-mac-apple`(M1 이후) 또는 `fishing-seats-mac-intel`을 받습니다. 터미널에서 다음을 한 번 실행한 뒤, 같은 방법으로 실행합니다.
 ```
 chmod +x 파일이름
 xattr -d com.apple.quarantine 파일이름
