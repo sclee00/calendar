@@ -352,6 +352,33 @@ async function watch() {
   return `조건 맞는 자리 ${hits.length}곳, 새 알림 ${fresh.length}곳`;
 }
 
+// ── 예약 도우미 연결 (별도 저장소 sclee00/fishing-b, 'Scriptable 낚시배예약' 스크립트) ──
+const BOOK_RE = /\/mypage\/reservation_ready\/\d+|\/_core\/module\/reservation_boat[^/]*\/popup\.step1\.php/;
+const BOOK_PATH = fm.joinPath(fm.documentsDirectory(), "fishing-book-main.js");
+let booking = false;
+async function openBooking(u) {
+  if (booking) return;
+  booking = true;
+  try {
+    // 최신 도우미 코드 받기 (실패하면 저장된 것 사용)
+    for (const k of ["fishingb_github_token", TOKEN_KEY]) {
+      if (!Keychain.contains(k)) continue;
+      try {
+        const r = new Request("https://api.github.com/repos/sclee00/fishing-b/contents/book.js?ref=main");
+        r.headers = { Authorization: "Bearer " + Keychain.get(k), Accept: "application/vnd.github.raw", "User-Agent": "scriptable-fishing" };
+        r.timeoutInterval = 8;
+        const s = await r.loadString();
+        if (r.response.statusCode === 200 && s.includes("module.exports")) { fm.writeString(BOOK_PATH, s); break; }
+      } catch (e) {}
+    }
+    if (fm.fileExists(BOOK_PATH)) await importModule(BOOK_PATH).run({ url: u });
+    else Safari.open(u); // 예약 도우미를 아직 설치하지 않았으면 브라우저로
+  } catch (e) {
+    console.error(e);
+    try { Safari.open("scriptable:///run/" + encodeURIComponent("낚시배예약") + "?url=" + encodeURIComponent(u)); } catch (e2) { Safari.open(u); }
+  } finally { booking = false; }
+}
+
 const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
 
 async function run() {
@@ -488,6 +515,7 @@ async function main(wv, say) {
       if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
       return false;
     }
+    if (BOOK_RE.test(u)) { openBooking(u); return false; } // 예약 페이지 → 예약 도우미(fishing-b)
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
