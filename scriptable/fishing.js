@@ -353,7 +353,7 @@ async function watch() {
 }
 
 // ── 예약 도우미 연결 (별도 저장소 sclee00/fishing-b, 'Scriptable 낚시배예약' 스크립트) ──
-const BOOK_RE = /\/mypage\/reservation_ready\/\d+|\/_core\/module\/reservation_boat[^/]*\/popup\.step1\.php/;
+const BOOK_RE = /\/mypage\/reservation_ready\/\d+|\/_core\/module\/reservation_boat[^/]*\/popu[p2]\.step1\.php|\/ship\/schedule_fleet\/\d{6}[?#]fb=/;
 const BOOK_PATH = fm.joinPath(fm.documentsDirectory(), "fishing-book-main.js");
 let booking = false, viewClosed = false;
 // 캘린더 화면(wv)을 그대로 이어 써서 예약 도우미를 실행하고, '← 캘린더'를 누르면 캘린더를 다시 그린다.

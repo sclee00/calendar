@@ -227,7 +227,7 @@ function bookUrl(b,mk,d){
   const M=monthBoats(mk)[b.name]||{},no=M.no&&M.no[d-1];
   if(b.u==="luk"||b.u==="dy"){
     if(no)return `${HOST[b.u]}/mypage/reservation_ready/${no}`;
-    return `${U[b.u]}/${mk.replace("-","")}`;
+    return `${U[b.u]}/${mk.replace("-","")}?fb=${encodeURIComponent(b.name)}_${d}`;
   }
   const mod=b.u==="khan"?"reservation_boat_v5.2_seat1":"reservation_boat_v5.2_seat2";
   if(PA[b.name])return `${HOST[b.u]}/_core/module/${mod}/popup.step1.php?date=${mk.replace("-","")}${pad(d)}&PA_N_UID=${PA[b.name]}`;
