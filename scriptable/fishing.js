@@ -355,9 +355,14 @@ async function watch() {
 // ── 예약 도우미 연결 (별도 저장소 sclee00/fishing-b, 'Scriptable 낚시배예약' 스크립트) ──
 const BOOK_RE = /\/mypage\/reservation_ready\/\d+|\/_core\/module\/reservation_boat[^/]*\/popup\.step1\.php/;
 const BOOK_PATH = fm.joinPath(fm.documentsDirectory(), "fishing-book-main.js");
-let booking = false;
-async function openBooking(u) {
+let booking = false, viewClosed = false;
+// 캘린더 화면(wv)을 그대로 이어 써서 예약 도우미를 실행하고, '← 캘린더'를 누르면 캘린더를 다시 그린다.
+async function openBooking(u, wv, render, isBusy) {
   if (booking) return;
+  if (isBusy()) { // 자리 확인 중에는 같은 화면을 쓰므로 끝난 뒤에
+    wv.evaluateJavaScript(`__setChecking(true, "자리 확인이 끝난 뒤 다시 눌러 주세요")`).catch(() => null);
+    return;
+  }
   booking = true;
   try {
     // 최신 도우미 코드 받기 (실패하면 저장된 것 사용)
@@ -371,11 +376,14 @@ async function openBooking(u) {
         if (r.response.statusCode === 200 && s.includes("module.exports")) { fm.writeString(BOOK_PATH, s); break; }
       } catch (e) {}
     }
-    if (fm.fileExists(BOOK_PATH)) await importModule(BOOK_PATH).run({ url: u });
-    else Safari.open(u); // 예약 도우미를 아직 설치하지 않았으면 브라우저로
-  } catch (e) {
-    console.error(e);
-    try { Safari.open("scriptable:///run/" + encodeURIComponent("낚시배예약") + "?url=" + encodeURIComponent(u)); } catch (e2) { Safari.open(u); }
+    if (!fm.fileExists(BOOK_PATH)) { Safari.open(u); return; } // 예약 도우미를 아직 설치하지 않았으면 브라우저로
+    try {
+      await importModule(BOOK_PATH).run({ url: u, wv, closed: () => viewClosed });
+    } catch (e) {
+      console.error(e);
+      Safari.open(u);
+    }
+    if (!viewClosed) await render();
   } finally { booking = false; }
 }
 
@@ -403,7 +411,7 @@ async function run() {
   const wv = new WebView();
   // 1) 바로 '불러오는 중' 화면을 띄운다 (빈 화면 방지)
   await wv.loadHTML(LOADING);
-  const shown = wv.present(true);
+  const shown = wv.present(true).then(() => { viewClosed = true; });
   const say = (t) => { console.log(t); return wv.evaluateJavaScript(`(function(){var m=document.getElementById("m");if(m)m.textContent=${JSON.stringify(t)};return 1})()`).catch(() => null); };
   try {
     await main(wv, say);
@@ -435,7 +443,6 @@ async function main(wv, say) {
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -515,13 +522,20 @@ async function main(wv, say) {
       if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
       return false;
     }
-    if (BOOK_RE.test(u)) { openBooking(u); return false; } // 예약 페이지 → 예약 도우미(fishing-b)
+    if (BOOK_RE.test(u)) { openBooking(u, wv, render, () => busy || queue.length > 0); return false; } // 예약 페이지 → 예약 도우미(fishing-b)
     if (/^https?:/.test(u) && !u.startsWith(PAGE) && !u.startsWith("https://fonts.")) { Safari.open(u); return false; }
     return true;
   };
   await say("캘린더 그리는 중…");
-  await wv.loadHTML(html.replace("<head>", "<head>" + inject), PAGE);
-  await wv.evaluateJavaScript(PARSER);
+  // 예약 도우미에서 돌아올 때도 최신 결과로 다시 그린다
+  const handler = wv.shouldAllowRequest;
+  async function render() {
+    wv.shouldAllowRequest = handler;
+    const inj = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
+    await wv.loadHTML(html.replace("<head>", "<head>" + inj), PAGE);
+    await wv.evaluateJavaScript(PARSER);
+  }
+  await render();
   console.log("캘린더 표시 완료, 확인 시작");
   await askToken();
   want(first);
