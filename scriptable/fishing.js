@@ -373,10 +373,27 @@ async function run() {
     Script.setShortcutOutput("단축어의 Run Script 동작에서 '앱에서 실행(Run In App)'을 켜 주세요.");
     return;
   }
-  const wv = new WebView();
-  // 1) 바로 '불러오는 중' 화면을 띄운다 (빈 화면 방지)
-  await wv.loadHTML(LOADING);
-  const shown = wv.present(true);
+  // 앱이 아직 떠 있는 상태에서 홈 아이콘을 다시 누르면, 이전 화면이 닫히는 도중에 새 화면을
+  // 띄우려다 빈 화면이 될 수 있다 → 이전 실행이 살아 있으면 잠깐 기다리고, 화면이 바로 닫혀 버리면 다시 띄운다
+  const ALIVE = fm.joinPath(DIR, "alive.txt");
+  let prevAlive = false;
+  try { prevAlive = fm.fileExists(ALIVE) && Date.now() - +fm.readString(ALIVE) < 4000; } catch (e) {}
+  if (prevAlive) await sleep(1500);
+  let wv, shown;
+  for (let i = 0; i < 3; i++) {
+    wv = new WebView();
+    // 1) 바로 '불러오는 중' 화면을 띄운다 (빈 화면 방지)
+    await wv.loadHTML(LOADING);
+    let closed = false;
+    shown = wv.present(true).then(() => { closed = true; });
+    await sleep(700);
+    if (!closed) break; // 제대로 떠 있음
+    await sleep(800);   // 바로 닫혔으면(이전 화면과 겹침) 다시 시도
+  }
+  let viewOpen = true;
+  shown.then(() => { viewOpen = false; });
+  const beat = () => { if (!viewOpen) return; try { fm.writeString(ALIVE, String(Date.now())); } catch (e) {} Timer.schedule(1500, false, beat); };
+  beat();
   const say = (t) => { console.log(t); return wv.evaluateJavaScript(`(function(){var m=document.getElementById("m");if(m)m.textContent=${JSON.stringify(t)};return 1})()`).catch(() => null); };
   try {
     await main(wv, say);
@@ -390,6 +407,7 @@ async function run() {
     await a.presentAlert();
   }
   await shown;
+  try { fm.remove(ALIVE); } catch (e) {}
 }
 
 async function main(wv, say) {
