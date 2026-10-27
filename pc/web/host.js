@@ -272,7 +272,7 @@
     const kst = new Date(Date.now() + 9 * 3600e3);
     const today = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()));
     const from = cfg.from ? new Date(cfg.from + "T00:00:00Z") : today;
-    const to = cfg.to ? new Date(cfg.to + "T00:00:00Z") : new Date(today.getTime() + 30 * 864e5);
+    const to = cfg.to ? new Date(cfg.to + "T00:00:00Z") : new Date(Math.max(from, today) + 30 * 864e5); // 끝 날짜를 비우면 시작일부터 30일
     const dows = Array.isArray(cfg.dows) && cfg.dows.length ? cfg.dows : [0, 1, 2, 3, 4, 5, 6];
     const out = [];
     for (let d = new Date(Math.max(from, today)); d <= to && out.length < 93; d = new Date(d.getTime() + 864e5)) {
@@ -280,63 +280,108 @@
     }
     return out;
   }
+// ── 빈자리 알림 규칙: 종류(빈자리·취소로 다시 열림·새로 열림)마다 조건을 따로 ──
+const RULE_KINDS = [["reopen", "취소로 다시 열린 자리"], ["open", "예약이 새로 열림"], ["any", "빈자리"]];
+function watchRules(cfg) {
+  cfg = cfg || {};
+  if (cfg.rules && typeof cfg.rules === "object") return cfg.rules;
+  // 예전 설정(조건 하나 + 기준 선택)을 종류별 규칙으로 바꿔 읽음
+  const base = { from: cfg.from || "", to: cfg.to || "", dows: cfg.dows, min: cfg.min, sp: cfg.sp, boats: cfg.boats };
+  const modes = Array.isArray(cfg.modes) ? cfg.modes : cfg.mode && cfg.mode !== "any" ? String(cfg.mode).split("+") : [];
+  const r = {};
+  (modes.length ? modes : ["any"]).forEach((m) => { r[m] = { on: true, ...base }; });
+  return r;
+}
+function ruleOf(r) {
+  const days = watchDays(r);
+  return {
+    days, want: new Set(days.map(([y, m, d]) => `${ymKey(y, m)}|${d}`)),
+    boats: Array.isArray(r.boats) && r.boats.length ? r.boats : KEEP,
+    sps: Array.isArray(r.sp) && r.sp.length ? r.sp : ["j", "f", "u"],
+    min: Math.max(1, +r.min || 1),
+    sig: JSON.stringify([r.from || "", r.to || "", r.dows || [], r.boats || [], r.sp || [], +r.min || 1]),
+  };
+}
+// 켜 둔 규칙들에 필요한 페이지만 받아서 배·날짜별 상태를 모은다
+async function watchCollect(rules, parse) {
+  const active = Object.values(rules).filter((r) => r && r.on).map(ruleOf);
+  const boats = new Set(active.flatMap((r) => r.boats));
+  const days = new Map();
+  active.forEach((r) => r.days.forEach((x) => days.set(x.join("-"), x)));
+  const rows = [], errors = [];
+  await Promise.all(SITES.filter((s) => s.boats.some((b) => boats.has(b))).map(async (site) => {
+    try {
+      const pages = new Map();
+      for (const [y, m, d] of days.values()) {
+        if (site.kind === "ss") pages.set(`${y}${pad(m)}`, [y, m, `https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`]);
+        else { const st = site.step || 4, d0 = 1 + st * Math.floor((d - 1) / st); pages.set(`${y}${pad(m)}${d0}`, [y, m, `https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d0)}`]); }
+      }
+      for (const [y, m, url] of pages.values()) {
+        const res = await parse(site.kind, await get(url), y, m);
+        for (const [d, name, s, sp] of res.rows) {
+          if (!days.has(`${y}-${m}-${d}`)) continue;
+          rows.push({ key: `${ymKey(y, m)}|${name}|${d}`, ym: ymKey(y, m), y, m, d, name, s, sp });
+        }
+      }
+    } catch (e) { errors.push(`${site.host}: ${e.message}`); }
+  }));
+  return { rows, errors };
+}
+// 규칙마다 새로 알릴 자리를 고른다. 한 번 알린 자리는 다시 마감(또는 기준 아래)됐다가 열릴 때까지 다시 안 알림
+function watchDecide(rules, rows, state) {
+  state = state || {};
+  const prev = state.prev || {}, sigs = state.sigs || {}, notified = state.notified && !Array.isArray(state.notified) ? state.notified : {};
+  const seen = {};
+  rows.forEach((r) => { seen[r.key] = r.s; });
+  const fresh = [], hits = new Set(), newSigs = {}, newNot = {};
+  for (const [type, label] of RULE_KINDS) {
+    const r = rules[type];
+    if (!r || !r.on) continue;
+    const R = ruleOf(r);
+    const baseline = sigs[type] !== R.sig; // 조건을 바꾼 직후 첫 확인
+    newSigs[type] = R.sig;
+    const N = baseline || typeof notified[type] !== "object" ? {} : { ...notified[type] };
+    for (const k of Object.keys(N)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= R.min)) delete N[k];
+    for (const h of rows) {
+      if (!R.boats.includes(h.name) || !R.want.has(`${h.ym}|${h.d}`) || !R.sps.includes(spOf2(h.sp))) continue;
+      if (!(typeof h.s === "number" && h.s >= R.min)) continue;
+      hits.add(h.key);
+      const ok = type === "any" ? true : type === "reopen" ? prev[h.key] === 0 : !baseline && typeof prev[h.key] !== "number";
+      if (ok && !N[h.key]) { N[h.key] = 1; fresh.push({ type, label, h }); }
+    }
+    newNot[type] = N;
+  }
+  return { fresh, hits: hits.size, state: { prev: { ...prev, ...seen }, sigs: newSigs, notified: newNot, at: kstIso() } };
+}
+function watchMessage(fresh) {
+  const WDN = ["일", "월", "화", "수", "목", "금", "토"];
+  const fmt = (h) => `${h.m}/${h.d}(${WDN[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
+  const title = RULE_KINDS.map(([t, label]) => [label, fresh.filter((f) => f.type === t).length]).filter(([, n]) => n).map(([l, n]) => `${l} ${n}곳`).join(" · ");
+  const tag = { reopen: "[취소] ", open: "[새로] ", any: "" };
+  const lines = [], done = new Set();
+  fresh.forEach((f) => { if (!done.has(f.h.key)) { done.add(f.h.key); lines.push(tag[f.type] + fmt(f.h)); } });
+  return { title, body: lines.slice(0, 6).join("\n") + (lines.length > 6 ? `\n외 ${lines.length - 6}곳` : ""), lines };
+}
+
   let watchTimer = null, watching = false;
   async function runWatch() {
     const cfg = settings.watch || {};
-    if (!cfg.on || watching) return;
+    const rules = watchRules(cfg);
+    if (!cfg.on || watching || !Object.values(rules).some((r) => r && r.on)) return;
     watching = true;
-    while (busy) await sleep(2000); // 캘린더 확인이 끝난 뒤에
     try {
-      const days = watchDays(cfg);
-      const boats = Array.isArray(cfg.boats) && cfg.boats.length ? cfg.boats : KEEP;
-      const sps = Array.isArray(cfg.sp) && cfg.sp.length ? cfg.sp : ["j", "f", "u"];
-      const min = Math.max(1, +cfg.min || 1);
-      const wantSet = new Set(days.map(([y, m, d]) => `${ymKey(y, m)}|${d}`));
-      const hits = [], seen = {};
-      await Promise.all(SITES.filter((s) => s.boats.some((b) => boats.includes(b))).map(async (site) => {
-        try {
-          const pages = new Map();
-          for (const [y, m, d] of days) {
-            if (site.kind === "ss") pages.set(`${y}${pad(m)}`, [y, m, `https://${site.host}/ship/schedule_fleet/${y}${pad(m)}`]);
-            else { const st = site.step || 4, d0 = 1 + st * Math.floor((d - 1) / st); pages.set(`${y}${pad(m)}${d0}`, [y, m, `https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d0)}`]); }
-          }
-          for (const [y, m, url] of pages.values()) {
-            const res = parse(site.kind, await get(url), y, m);
-            for (const [d, name, s, sp] of res.rows) {
-              if (!boats.includes(name) || !wantSet.has(`${ymKey(y, m)}|${d}`) || !sps.includes(spOf2(sp))) continue;
-              const key = `${ymKey(y, m)}|${name}|${d}`;
-              seen[key] = s;
-              if (typeof s === "number" && s >= min) hits.push({ key, y, m, d, name, s });
-            }
-          }
-        } catch (e) {}
-      }));
-      let state = (await store.get("watch-state")) || {};
-      // 조건(기간·배·기준)을 바꾸면 처음 한 번은 지금 상태만 기억하고 알리지 않는다 ('새로 열리면' 기준용)
-      const modes = Array.isArray(cfg.modes) ? cfg.modes : cfg.mode && cfg.mode !== "any" ? String(cfg.mode).split("+") : [];
-      const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, modes]);
-      const baseline = state.sig !== sig;
-      if (baseline) state = { sig };
-      const prev = state.prev || {}, notified = state.notified || {};
-      for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
-      // 알림 기준: 아무것도 고르지 않으면 빈자리 전부, 고르면 고른 것 중 하나라도 맞을 때
-      const kindOf = (h) => prev[h.key] === 0 ? "reopen" : !baseline && typeof prev[h.key] !== "number" ? "open" : "";
-      const isNew = (h) => !modes.length || modes.includes(kindOf(h));
-      const fresh = hits.filter((h) => !notified[h.key] && isNew(h));
-      fresh.forEach((h) => { notified[h.key] = 1; });
-      await store.put("watch-state", { sig, prev: { ...prev, ...seen }, notified, at: kstIso() });
-      if (fresh.length) {
-        const WD = ["일", "월", "화", "수", "목", "금", "토"];
-        const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
-        const title = !modes.length ? `빈자리 ${fresh.length}곳`
-        : [["reopen", "취소로 다시 열린 자리"], ["open", "예약이 새로 열림"]].map(([k, t]) => [t, fresh.filter((h) => kindOf(h) === k).length]).filter(([, n]) => n).map(([t, n]) => `${t} ${n}곳`).join(" · ");
-        const body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
+      while (busy) await sleep(2000); // 캘린더 확인이 끝난 뒤에
+      const { rows } = await watchCollect(rules, async (kind, html, y, m) => parse(kind, html, y, m));
+      const res = watchDecide(rules, rows, (await store.get("watch-state")) || {});
+      await store.put("watch-state", res.state);
+      if (res.fresh.length) {
+        const msg = watchMessage(res.fresh);
         if ("Notification" in window && Notification.permission === "granted") {
-          const n = new Notification(title, { body, tag: "fishing-seats", requireInteraction: true });
+          const n = new Notification(msg.title, { body: msg.body, tag: "fishing-seats", requireInteraction: true });
           n.onclick = () => { window.focus(); n.close(); };
         }
-        __setChecking(false, `${title}: ${body.replace(/\n/g, ", ")}`);
-        document.title = `(${fresh.length}) ` + document.title.replace(/^\(\d+\) /, "");
+        __setChecking(false, `${msg.title}: ${msg.lines.join(", ")}`);
+        document.title = `(${res.fresh.length}) ` + document.title.replace(/^\(\d+\) /, "");
       }
     } finally { watching = false; }
   }

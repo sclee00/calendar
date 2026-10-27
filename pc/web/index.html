@@ -78,6 +78,13 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .wsw{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .wsw .muted{color:var(--muted);font-size:12px}
 .wform{display:grid;gap:8px}
+.wrules{display:grid;gap:8px}
+.wrule{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:grid;gap:7px;background:var(--surface)}
+.wrule>label.wh{display:flex;gap:6px;align-items:center;font-weight:600}
+.wrule>label.wh i{display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--open)}
+.wrule .wbody{display:grid;gap:7px}.wrule .wbody[hidden]{display:none!important}
+.wrule small{color:var(--muted);font-size:11.5px}
+.mini{font:inherit;font-size:11.5px;border:0;background:none;color:var(--accent,#1f5f99);padding:0 4px;cursor:pointer;text-decoration:underline}
 .wform[hidden]{display:none!important}
 .wform input[type=date],.wform select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 6px}
 .wrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
@@ -178,15 +185,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <label class="wsw"><input type="checkbox" id="wOn"> <b>빈자리 알림</b> <span class="muted">내가 확인하지 않아도 정해 둔 간격으로 확인하고 알려줘요</span></label>
       <div class="wform" id="wForm">
         <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option><option value="720">12시간</option><option value="1440">24시간</option><option value="2880">48시간</option></select></label>
-        <label>날짜 <input type="date" id="wFrom"> ~ <input type="date" id="wTo"></label>
-        <div class="wrow"><span>요일</span><div class="chips" id="wDows"></div></div>
-        <label>남은 자리 <select id="wMin"></select> 이상</label>
-        <div class="wrow"><span>어종</span><div class="chips" id="wSp"></div></div>
-        <div class="wrow"><span>배</span><div class="chips" id="wBoats"></div></div>
-        <div class="wrow"><span>알림 기준</span>
-          <label><input type="checkbox" name="wMode" value="reopen"> 취소로 다시 열린 자리</label>
-          <label><input type="checkbox" name="wMode" value="open"> 아직 안 열렸다가 새로 열린 예약</label>
-          <small style="flex-basis:100%">둘 다 고르지 않으면 조건에 맞는 빈자리가 있을 때 알려요.</small></div>
+        <div id="wRules" class="wrules"></div>
       </div>
       <button class="btn" id="wSave" type="button"><span>알림 설정 저장</span></button>
       <button class="btn ghost" id="wTest" type="button"><span>알림·깜빡임 미리보기</span></button>
@@ -438,20 +437,42 @@ if(IN_APP){
 load(false);
 // 빈자리 알림 설정
 if(IN_APP){
-  const W=Object.assign({on:false,interval:60,from:"",to:"",dows:[0,1,2,3,4,5,6],min:1,sp:["j","f","u"],boats:[],mode:"any"},window.__watch||{});
+  const W=Object.assign({on:false,interval:60},window.__watch||{});
   const $=id=>document.getElementById(id);
   const allBoats=window.__boatsAll||BOATS.map(b=>b.name);
-  let selBoats=new Set(W.boats&&W.boats.length?W.boats:allBoats),selDows=new Set(W.dows),selSp=new Set(W.sp);
+  // 알림은 종류마다 조건(날짜·요일·남은 자리·어종·배)을 따로 정한다
+  const KINDS=[["reopen","취소로 다시 열린 자리","마감됐던 배에 자리가 다시 생기면 (캘린더에선 천천히 깜빡임)","blink"],
+    ["open","아직 안 열렸다가 새로 열린 예약","예약을 받지 않던 날에 예약이 열리면 (빠르게 깜빡임). 켜거나 조건을 바꾼 직후 첫 확인은 지금 상태만 기억해요","blink2"],
+    ["any","빈자리 있음","조건에 맞는 빈자리가 있으면 (한 번 알린 자리는 다시 마감됐다 열릴 때까지 다시 안 알림)",""]];
+  const legacy=()=>{const base={from:W.from||"",to:W.to||"",dows:W.dows,min:W.min,sp:W.sp,boats:W.boats};
+    const modes=Array.isArray(W.modes)?W.modes:(W.mode&&W.mode!=="any"?String(W.mode).split("+"):[]);const r={};(modes.length?modes:["any"]).forEach(m=>{r[m]={on:true,...base}});return r};
+  const RULES=W.rules&&typeof W.rules==="object"?W.rules:(W.from!==undefined||W.mode?legacy():{});
   $("wOn").checked=!!W.on;$("wForm").hidden=!W.on;$("wOn").onchange=()=>{$("wForm").hidden=!$("wOn").checked};
-  $("wInt").value=String(W.interval);$("wFrom").value=W.from||"";$("wTo").value=W.to||"";
-  for(let n=1;n<=10;n++){const o=document.createElement("option");o.value=n;o.textContent=n+"석";$("wMin").append(o)}$("wMin").value=String(W.min||1);
-  const modes0=Array.isArray(W.modes)?W.modes:(W.mode&&W.mode!=="any"?[W.mode]:[]);
-  document.querySelectorAll('input[name="wMode"]').forEach(r=>{r.checked=modes0.includes(r.value)});
+  $("wInt").value=String(W.interval||60);
   const chips=(el,items,set,label)=>{el.innerHTML="";items.forEach(v=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label(v);
     b.setAttribute("aria-pressed",String(set.has(v)));b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);if(!set.size)set.add(v);b.setAttribute("aria-pressed",String(set.has(v)))};el.append(b)})};
-  chips($("wDows"),[1,2,3,4,5,6,0],selDows,v=>WD[v]);
-  chips($("wSp"),["j","f","u"],selSp,v=>SP[v]);
-  chips($("wBoats"),allBoats,selBoats,v=>v);
+  const forms={};
+  KINDS.forEach(([k,title,desc,sw])=>{
+    const R=Object.assign({on:false,from:"",to:"",dows:[0,1,2,3,4,5,6],min:1,sp:["j","f","u"],boats:[]},RULES[k]||{});
+    const box=document.createElement("div");box.className="wrule";
+    box.innerHTML=`<label class="wh"><input type="checkbox" data-f="on">${sw?`<i class="sw ${sw}"></i>`:""}${title}</label><small>${desc}</small>
+      <div class="wbody"><label>날짜 <input type="date" data-f="from"> ~ <input type="date" data-f="to"></label><small>시작을 비우면 오늘부터, 끝을 비우면 시작일부터 30일</small>
+      <div class="wrow"><span>요일</span><div class="chips" data-f="dows"></div></div>
+      <label>남은 자리 <select data-f="min"></select> 이상</label>
+      <div class="wrow"><span>어종</span><div class="chips" data-f="sp"></div></div>
+      <div class="wrow"><span>배 <button type="button" class="mini" data-f="all">모두</button><button type="button" class="mini" data-f="none">하나만</button></span><div class="chips" data-f="boats"></div></div></div>`;
+    const q=f=>box.querySelector(`[data-f="${f}"]`);
+    q("on").checked=!!R.on;q("from").value=R.from||"";q("to").value=R.to||"";
+    const body=box.querySelector(".wbody");body.hidden=!R.on;q("on").onchange=()=>{body.hidden=!q("on").checked};
+    for(let n=1;n<=10;n++){const o=document.createElement("option");o.value=n;o.textContent=n+"석";q("min").append(o)}q("min").value=String(R.min||1);
+    const F={dows:new Set(R.dows&&R.dows.length?R.dows:[0,1,2,3,4,5,6]),sp:new Set(R.sp&&R.sp.length?R.sp:["j","f","u"]),boats:new Set(R.boats&&R.boats.length?R.boats:allBoats)};
+    chips(q("dows"),[1,2,3,4,5,6,0],F.dows,v=>WD[v]);chips(q("sp"),["j","f","u"],F.sp,v=>SP[v]);
+    const drawBoats=()=>chips(q("boats"),allBoats,F.boats,v=>v);drawBoats();
+    q("all").onclick=()=>{allBoats.forEach(b=>F.boats.add(b));drawBoats()};
+    q("none").onclick=()=>{F.boats.clear();F.boats.add(allBoats[0]);drawBoats()};
+    forms[k]=()=>({on:q("on").checked,from:q("from").value,to:q("to").value,dows:[...F.dows],min:+q("min").value,sp:[...F.sp],boats:F.boats.size===allBoats.length?[]:[...F.boats]});
+    $("wRules").append(box);
+  });
   // 미리보기: 깜빡임 예시를 붙이고, 아이폰·PC 알림도 예시로 한 번 보냄
   $("wTest").onclick=()=>{
     DEMO=!DEMO;const old=document.getElementById("npv");if(old)old.remove();
@@ -462,9 +483,8 @@ if(IN_APP){
       window.__host("fishing://testnote?d="+encodeURIComponent(JSON.stringify(lines)))},300);
   };
   $("wSave").onclick=()=>{
-    const cfg={on:$("wOn").checked,interval:+$("wInt").value,from:$("wFrom").value,to:$("wTo").value,dows:[...selDows],min:+$("wMin").value,
-      sp:[...selSp],boats:selBoats.size===allBoats.length?[]:[...selBoats],modes:[...document.querySelectorAll('input[name="wMode"]:checked')].map(r=>r.value)};
-    cfg.mode=cfg.modes.length?cfg.modes.join("+"):"any";
+    const rules={};KINDS.forEach(([k])=>{rules[k]=forms[k]()});
+    const cfg={on:$("wOn").checked,interval:+$("wInt").value,rules};
     window.__watch=cfg;window.__host("fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg)));
   };
 }
