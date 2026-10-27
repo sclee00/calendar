@@ -226,6 +226,7 @@
           settings = { ...settings, watch: cfg }; store.put("settings", settings);
           if (cfg.on && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
           startWatch();
+          if (cfg.on) setTimeout(runWatch, 1500);
           __setChecking(false, cfg.on ? `빈자리 알림을 켰어요. 이 탭이 열려 있는 동안 ${cfg.interval >= 60 ? cfg.interval / 60 + "시간" : cfg.interval + "분"}마다 확인합니다.` : "빈자리 알림을 껐어요.");
         }
       } catch (e) {}
@@ -252,8 +253,9 @@
   let watchTimer = null, watching = false;
   async function runWatch() {
     const cfg = settings.watch || {};
-    if (!cfg.on || watching || busy) return;
+    if (!cfg.on || watching) return;
     watching = true;
+    while (busy) await sleep(2000); // 캘린더 확인이 끝난 뒤에
     try {
       const days = watchDays(cfg);
       const boats = Array.isArray(cfg.boats) && cfg.boats.length ? cfg.boats : KEEP;
@@ -279,16 +281,23 @@
           }
         } catch (e) {}
       }));
-      const state = (await store.get("watch-state")) || {};
+      let state = (await store.get("watch-state")) || {};
+      // 조건(기간·배·기준)을 바꾸면 처음 한 번은 지금 상태만 기억하고 알리지 않는다 ('새로 열리면' 기준용)
+      const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, cfg.mode]);
+      const baseline = state.sig !== sig;
+      if (baseline) state = { sig };
       const prev = state.prev || {}, notified = state.notified || {};
       for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
-      const fresh = hits.filter((h) => !notified[h.key] && (cfg.mode !== "reopen" || prev[h.key] === 0));
+      const isNew = (h) => cfg.mode === "reopen" ? prev[h.key] === 0
+        : cfg.mode === "open" ? !baseline && typeof prev[h.key] !== "number" // 전에는 예약을 받지 않던 배·날짜에 자리가 생김
+        : true;
+      const fresh = hits.filter((h) => !notified[h.key] && isNew(h));
       fresh.forEach((h) => { notified[h.key] = 1; });
-      await store.put("watch-state", { prev: { ...prev, ...seen }, notified, at: kstIso() });
+      await store.put("watch-state", { sig, prev: { ...prev, ...seen }, notified, at: kstIso() });
       if (fresh.length) {
         const WD = ["일", "월", "화", "수", "목", "금", "토"];
         const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
-        const title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
+        const title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : cfg.mode === "open" ? `예약이 새로 열림 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
         const body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
         if ("Notification" in window && Notification.permission === "granted") {
           const n = new Notification(title, { body, tag: "fishing-seats", requireInteraction: true });

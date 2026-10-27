@@ -13,6 +13,10 @@ s = s.replace("저장한 뒤 아이폰 홈 화면에 Scriptable 위젯을 추가
 s = s.replace("'지금 확인'을 누르면 아이폰의 Scriptable 앱이 열리면서 아이폰이 직접 네 선사 예약 화면을 한 번 읽어 옵니다(컴퓨터·Claude 필요 없음).",
               "'지금 확인'을 누르면 이 PC가 직접 네 선사 예약 화면을 한 번 읽어 옵니다(Claude 필요 없음). 결과는 이 PC에만 저장됩니다.")
 s = s.replace("<title>", "<title>PC · ", 1)
+# 알림 기준에 '예약이 새로 열리면' 추가 (PC 버전만)
+o = '<label><input type="radio" name="wMode" value="reopen"> 취소로 다시 열린 자리만</label>'
+assert o in s
+s = s.replace(o, o + '\n          <label><input type="radio" name="wMode" value="open"> 아직 안 열린 예약이 새로 열리면</label>')
 open("web/index.html", "w", encoding="utf-8").write(s)
 PY
 mkdir -p dist
