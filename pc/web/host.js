@@ -128,16 +128,18 @@
   function merge(old, results, errors, sources, checked) {
     const oldMonths = (old && old.months) || {};
     const months = { ...oldMonths };
-    const reopened = [];
+    const reopened = [], newlyOpened = [];
     for (const k of [...new Set(checked)].sort()) {
       const prev = oldMonths[k] || { boats: {}, reopen: {} };
-      const boats = {}, reopen = {};
+      const boats = {}, reopen = {}, opened = {};
+      const monthSeen = !!oldMonths[k]; // 전에 확인한 달이어야 '새로 열림'을 판단
       for (const site of SITES) {
         const fresh = results[site.id];
         for (const name of site.boats) {
           if (!fresh) {
             if (prev.boats && prev.boats[name]) boats[name] = prev.boats[name];
             if (prev.reopen && prev.reopen[name]) reopen[name] = prev.reopen[name];
+            if (prev.opened && prev.opened[name]) opened[name] = prev.opened[name];
             continue;
           }
           const nb = fresh[k] && fresh[k][name];
@@ -153,11 +155,22 @@
             flags += on ? "1" : "0";
           });
           if (flags.includes("1")) reopen[name] = flags;
+          // 새로 열린 예약: 전에는 일정이 없던(빈칸) 날에 자리가 생김
+          const pb = prev.boats && prev.boats[name] && prev.boats[name].s, po = (prev.opened && prev.opened[name]) || "";
+          let of = "";
+          nb.s.forEach((v, i) => {
+            const was = po[i] === "1";
+            const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+            if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
+            of += on ? "1" : "0";
+          });
+          if (of.includes("1")) opened[name] = of;
         }
       }
-      if (Object.keys(boats).length) months[k] = { boats, reopen }; else delete months[k];
+      // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
+      if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened }; else delete months[k];
     }
-    return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, sources, months };
+    return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
   }
 
   // ── 캘린더 확인 ──
@@ -192,6 +205,11 @@
     await store.put("seats", data);
     __applySeats(data);
     let msg = errors.length ? `일부 사이트를 읽지 못했습니다: ${errors.join(" / ")}` : "";
+    const newItems = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
+    if (newItems.length && "Notification" in window && Notification.permission === "granted") {
+      try { new Notification(`새로 생긴 자리 ${newItems.length}곳`, { body: newItems.slice(0, 6).join("\n"), tag: "fishing-check" }); } catch (e) {}
+    }
+    if ((data.opened || []).length) msg = `새로 열린 예약 ${data.opened.length}곳: ${data.opened.slice(0, 6).join(", ")}${data.opened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     if (data.reopened.length) msg = `취소로 다시 열린 자리 ${data.reopened.length}곳: ${data.reopened.slice(0, 6).join(", ")}${data.reopened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     __setChecking(false, msg);
   }
@@ -230,6 +248,18 @@
           __setChecking(false, cfg.on ? `빈자리 알림을 켰어요. 이 탭이 열려 있는 동안 ${cfg.interval >= 60 ? cfg.interval / 60 + "시간" : cfg.interval + "분"}마다 확인합니다.` : "빈자리 알림을 껐어요.");
         }
       } catch (e) {}
+    } else if (u.startsWith("fishing://testnote")) { // 미리보기: 실제 PC 알림 모양 보기
+      let lines = [];
+      try { lines = JSON.parse(decodeURIComponent((/d=([^&]*)/.exec(u) || [])[1] || "[]")); } catch (e) {}
+      if (!lines.length) lines = ["11/14(토) 루키나호 3석"];
+      const show = () => {
+        if (!("Notification" in window) || Notification.permission !== "granted") { __setChecking(false, "브라우저 알림이 꺼져 있습니다. 주소창 왼쪽 자물쇠 → 알림 '허용' 후 다시 눌러 보세요."); return; }
+        [[`빈자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)], [`취소로 다시 열린 자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)],
+          [`예약이 새로 열림 ${Math.max(1, lines.length - 3)}곳`, lines.length > 3 ? lines.slice(3) : lines.slice(0, 1)]]
+          .forEach(([t, b], i) => setTimeout(() => new Notification("[미리보기] " + t, { body: b.join("\n"), tag: "fishing-preview-" + i }), 1500 + i * 1500));
+        __setChecking(false, "PC 알림 예시 3개를 보냈습니다. 화면 오른쪽 아래(윈도우 알림)를 보세요.");
+      };
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(show); else show();
     } else if (u.startsWith("fishing://month")) {
       const v = ymOf(u);
       if (v && !checked.has(ymKey(...v)) && ymKey(...v) >= ymKey(...first[0])) want([v]);
@@ -283,21 +313,23 @@
       }));
       let state = (await store.get("watch-state")) || {};
       // 조건(기간·배·기준)을 바꾸면 처음 한 번은 지금 상태만 기억하고 알리지 않는다 ('새로 열리면' 기준용)
-      const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, cfg.mode]);
+      const modes = Array.isArray(cfg.modes) ? cfg.modes : cfg.mode && cfg.mode !== "any" ? String(cfg.mode).split("+") : [];
+      const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, modes]);
       const baseline = state.sig !== sig;
       if (baseline) state = { sig };
       const prev = state.prev || {}, notified = state.notified || {};
       for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
-      const isNew = (h) => cfg.mode === "reopen" ? prev[h.key] === 0
-        : cfg.mode === "open" ? !baseline && typeof prev[h.key] !== "number" // 전에는 예약을 받지 않던 배·날짜에 자리가 생김
-        : true;
+      // 알림 기준: 아무것도 고르지 않으면 빈자리 전부, 고르면 고른 것 중 하나라도 맞을 때
+      const kindOf = (h) => prev[h.key] === 0 ? "reopen" : !baseline && typeof prev[h.key] !== "number" ? "open" : "";
+      const isNew = (h) => !modes.length || modes.includes(kindOf(h));
       const fresh = hits.filter((h) => !notified[h.key] && isNew(h));
       fresh.forEach((h) => { notified[h.key] = 1; });
       await store.put("watch-state", { sig, prev: { ...prev, ...seen }, notified, at: kstIso() });
       if (fresh.length) {
         const WD = ["일", "월", "화", "수", "목", "금", "토"];
         const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
-        const title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : cfg.mode === "open" ? `예약이 새로 열림 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
+        const title = !modes.length ? `빈자리 ${fresh.length}곳`
+        : [["reopen", "취소로 다시 열린 자리"], ["open", "예약이 새로 열림"]].map(([k, t]) => [t, fresh.filter((h) => kindOf(h) === k).length]).filter(([, n]) => n).map(([t, n]) => `${t} ${n}곳`).join(" · ");
         const body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
         if ("Notification" in window && Notification.permission === "granted") {
           const n = new Notification(title, { body, tag: "fishing-seats", requireInteraction: true });

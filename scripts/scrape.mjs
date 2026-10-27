@@ -199,17 +199,19 @@ const months = {};
 // 지난 달 기록은 그대로 둔다
 for (const [k, v] of Object.entries(oldMonths)) if (k < curYM) months[k] = v;
 
-const reopened = [];
+const reopened = [], newlyOpened = [];
 const allKeys = new Set([...MONTHS.map(([y, m]) => ymKey(y, m)), ...Object.keys(oldMonths).filter((k) => k >= curYM)]);
 for (const k of [...allKeys].sort()) {
   const prev = oldMonths[k] || { boats: {}, reopen: {} };
-  const boats = {}, reopen = {};
+  const boats = {}, reopen = {}, opened = {};
+  const monthSeen = !!oldMonths[k]; // 전에 확인한 달이어야 '새로 열림'을 판단
   for (const site of SITES) {
     const fresh = results[site.id];
     for (const name of site.boats) {
       if (!fresh) { // 실패한 사이트는 이전 값 유지
         if (prev.boats?.[name]) boats[name] = prev.boats[name];
         if (prev.reopen?.[name]) reopen[name] = prev.reopen[name];
+        if (prev.opened?.[name]) opened[name] = prev.opened[name];
         continue;
       }
       const nb = fresh[k]?.[name];
@@ -225,12 +227,23 @@ for (const k of [...allKeys].sort()) {
         flags += on ? "1" : "0";
       });
       if (flags.includes("1")) reopen[name] = flags;
+      // 새로 열린 예약: 전에는 일정이 없던(빈칸) 날에 자리가 생김
+      const pb = prev.boats?.[name]?.s, po = prev.opened?.[name] || "";
+      let of = "";
+      nb.s.forEach((v, i) => {
+        const was = po[i] === "1";
+        const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+        if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
+        of += on ? "1" : "0";
+      });
+      if (of.includes("1")) opened[name] = of;
     }
   }
-  if (Object.keys(boats).length) months[k] = { boats, reopen };
+  // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
+  if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened };
 }
 
-const data = { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, sources, months };
+const data = { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
 fs.mkdirSync(new URL("../data/", import.meta.url), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(data));
 console.log(`저장: ${Object.keys(months).length}개월, 다시 열린 자리 ${reopened.length}건${errors.length ? ", 실패 " + errors.length + "곳" : ""}`);

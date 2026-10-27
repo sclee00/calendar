@@ -98,9 +98,14 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .t.open{--c:var(--open);--ci:var(--open-ink)} .t.full{--c:var(--full);--ci:var(--full-ink)}
 .t.cancel{--c:var(--cancel);--ci:var(--cancel-ink)} .t.neutral{--c:var(--neutral);--ci:var(--neutral-ink)}
 @keyframes reblink{0%,100%{opacity:1}50%{opacity:.15}}
-.t.reopen svg,.sw.blink{animation:reblink 1s ease-in-out infinite}
-.t.reopen .shape{stroke:var(--ink);stroke-width:2.5;paint-order:stroke}
-@media (prefers-reduced-motion:reduce){.t.reopen svg,.sw.blink{animation:none}}
+.t.reopen svg,.sw.blink{animation:reblink 1.4s ease-in-out infinite}
+.t.fresh svg,.sw.blink2{animation:reblink .45s steps(2,jump-none) infinite}
+.t.reopen .shape,.t.fresh .shape{stroke:var(--ink);stroke-width:2.5;paint-order:stroke}
+@media (prefers-reduced-motion:reduce){.t.reopen svg,.sw.blink,.t.fresh svg,.sw.blink2{animation:none}}
+.npv{display:grid;gap:8px;margin:10px 0}
+.npv div{display:grid;grid-template-columns:32px 1fr;gap:2px 10px;padding:10px 12px;border-radius:14px;background:rgba(245,245,247,.92);color:#111;box-shadow:0 6px 18px rgba(0,0,0,.18);font:13px/1.35 -apple-system,sans-serif}
+.npv i{grid-row:span 2;width:32px;height:32px;border-radius:8px;background:#1f5f99;color:#fff;font:700 15px/32px sans-serif;text-align:center;font-style:normal}
+.npv b{display:flex;justify-content:space-between}.npv b small{font-weight:400;color:#666}
 
 .tp{display:inline-flex;align-items:center;border-radius:999px;padding:0 6px;font-family:var(--f-mono);font-size:10.5px;font-weight:600;white-space:nowrap;line-height:16px;color:#fff;font-variant-numeric:tabular-nums}
 .ml{font-size:10px;color:var(--muted);white-space:nowrap}
@@ -172,18 +177,19 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <div class="wbox" id="wBox">
       <label class="wsw"><input type="checkbox" id="wOn"> <b>빈자리 알림</b> <span class="muted">내가 확인하지 않아도 정해 둔 간격으로 확인하고 알려줘요</span></label>
       <div class="wform" id="wForm">
-        <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option></select></label>
+        <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option><option value="720">12시간</option><option value="1440">24시간</option><option value="2880">48시간</option></select></label>
         <label>날짜 <input type="date" id="wFrom"> ~ <input type="date" id="wTo"></label>
         <div class="wrow"><span>요일</span><div class="chips" id="wDows"></div></div>
         <label>남은 자리 <select id="wMin"></select> 이상</label>
         <div class="wrow"><span>어종</span><div class="chips" id="wSp"></div></div>
         <div class="wrow"><span>배</span><div class="chips" id="wBoats"></div></div>
         <div class="wrow"><span>알림 기준</span>
-          <label><input type="radio" name="wMode" value="any" checked> 자리가 있으면</label>
-          <label><input type="radio" name="wMode" value="reopen"> 취소로 다시 열린 자리만</label>
-          <label><input type="radio" name="wMode" value="open"> 아직 안 열린 예약이 새로 열리면</label></div>
+          <label><input type="checkbox" name="wMode" value="reopen"> 취소로 다시 열린 자리</label>
+          <label><input type="checkbox" name="wMode" value="open"> 아직 안 열렸다가 새로 열린 예약</label>
+          <small style="flex-basis:100%">둘 다 고르지 않으면 조건에 맞는 빈자리가 있을 때 알려요.</small></div>
       </div>
       <button class="btn" id="wSave" type="button"><span>알림 설정 저장</span></button>
+      <button class="btn ghost" id="wTest" type="button"><span>알림·깜빡임 미리보기</span></button>
       <small>PC 버전은 이 캘린더 탭이 열려 있는 동안만 정해 둔 간격으로 확인하고, 조건에 맞는 자리가 생기면 데스크톱 알림을 띄워요. 처음 켤 때 브라우저가 알림 허용을 물으면 '허용'을 누르세요.</small>
     </div>
   </div>
@@ -262,14 +268,18 @@ function badge(b,cls,sp,title,style=""){
 }
 const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
-const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]);return{b,s,re:s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(`${mk}|${b.name}|${d}`),sp:spOf((B.sp||"")[d-1])}}).filter(r=>r.s&&st.sp.has(r.sp))};
+const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{},O=(st.seats[mk]&&st.seats[mk].opened)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]),k=`${mk}|${b.name}|${d}`;
+  const re=s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(k),nw=!re&&s==="open"&&String(O[b.name]||"")[d-1]==="1"&&!ACK.has(k);
+  return{b,s,re,nw,sp:spOf((B.sp||"")[d-1])}}).filter(r=>r.s&&st.sp.has(r.sp))};
+const flagCls=r=>r.re?" reopen":r.nw?" fresh":"";
+const flagTxt=r=>r.re?"취소로 다시 열림":r.nw?"새로 열린 예약":"";
 
 function meta(){
   const demo={ab:""};
   const stops=[0,.25,.5,.75,1].map(t=>rcol(RMIN+t*(RMAX-RMIN))).join(",");
   document.getElementById("meta").innerHTML=
     Object.keys(SP).map(k=>`<span>${badge(demo,"neutral",k,SP[k],"width:24px;height:16px")}${SP[k]}</span>`).join("")+
-    `<span><i class="sw" style="background:var(--open)"></i>자리 있음</span><span><i class="sw blink" style="background:var(--open)"></i>취소로 다시 생긴 자리</span><span><i class="sw" style="background:var(--full)"></i>마감</span><span><i class="sw" style="background:var(--cancel)"></i>취소</span>`+
+    `<span><i class="sw" style="background:var(--open)"></i>자리 있음</span><span><i class="sw blink" style="background:var(--open)"></i>취소로 다시 생긴 자리(천천히)</span><span><i class="sw blink2" style="background:var(--open)"></i>새로 열린 예약(빠르게)</span><span><i class="sw" style="background:var(--full)"></i>마감</span><span><i class="sw" style="background:var(--cancel)"></i>취소</span>`+
     `<span>고저차 ${RMIN}<i class="grad" style="background:linear-gradient(90deg,${stops})"></i>${RMAX}cm</span>`;
 }
 function spRow(){
@@ -310,7 +320,7 @@ function grid(){
     let rows=cellRows(mk,d);
     let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div><div class="tiles">`;
     if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
-    rows.forEach(r=>{h+=badge(r.b,r.s+(r.re?" reopen":""),r.sp,`${r.b.name} · ${SP[r.sp]} · ${r.re?"취소로 다시 열림":LBL[r.s]}`)});
+    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${SP[r.sp]} · ${flagTxt(r)||LBL[r.s]}`)});
     el.innerHTML=h+"</div>";el.onclick=()=>{st.day=d;render()};g.append(el);
   }
   const tail=(7-(first+last)%7)%7;
@@ -323,7 +333,7 @@ function panel(){
   const MB=monthBoats(mk);
   const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
-  h+=rows.length?rows.map(({b,s,sp,n,re})=>`<div class="row">${badge(b,s+(re?" reopen":""),sp,re?"취소로 다시 열림":LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${SP[sp]} · ${s==="open"?n+"석 남음"+(re?" · 취소로 다시 열림":""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`).join("")
+  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${SP[sp]} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
     :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   document.getElementById("panel").innerHTML=h;
 }
@@ -338,8 +348,8 @@ function stamp(){
 // 깜빡임 리셋: 확인한 "다시 열린 자리"는 이 기기에 기억해 두고 깜빡이지 않게 함
 let ACK=new Set();try{ACK=new Set(JSON.parse(localStorage.getItem("ackReopen")||"[]"))}catch(e){}
 const saveAck=()=>{try{localStorage.setItem("ackReopen",JSON.stringify([...ACK]))}catch(e){}};
-function flaggedKeys(){const out=[];for(const[mk,M]of Object.entries(st.seats||{})){const R=(M&&M.reopen)||{},B=(M&&M.boats)||{};
-  for(const[name,f]of Object.entries(R)){const s=(B[name]&&B[name].s)||[];String(f).split("").forEach((c,i)=>{if(c==="1"&&typeof s[i]==="number"&&s[i]>0)out.push(`${mk}|${name}|${i+1}`)})}}return out}
+function flaggedKeys(){const out=[];for(const[mk,M]of Object.entries(st.seats||{})){const B=(M&&M.boats)||{};
+  for(const[name,f]of [...Object.entries((M&&M.reopen)||{}),...Object.entries((M&&M.opened)||{})]){const s=(B[name]&&B[name].s)||[];String(f).split("").forEach((c,i)=>{if(c==="1"&&typeof s[i]==="number"&&s[i]>0)out.push(`${mk}|${name}|${i+1}`)})}}return out}
 function syncAck(){if(!st.loaded||!Object.keys(st.seats||{}).length)return;const live=new Set(flaggedKeys());let ch=false;
   for(const k of [...ACK])if(!live.has(k)){ACK.delete(k);ch=true} // 다시 마감된 자리는 잊어서, 나중에 또 열리면 다시 깜빡이게
   if(ch)saveAck();
@@ -365,7 +375,35 @@ meta();render();
 
 const notice=msg=>{const n=document.getElementById("notice");n.textContent=msg;n.hidden=!msg};
 const btn=document.getElementById("refresh"),btnTxt=btn.querySelector("span");
+// 미리보기(?demo): 실제 데이터에 예시로 깜빡임 두 종류와 알림 모양을 붙여 보여 준다
+let DEMO=/[?&]demo\b/.test(location.search);
+function demoize(d){
+  d=JSON.parse(JSON.stringify(d||{months:{}}));const picks=[];
+  const mk=Object.keys(d.months||{}).sort().find(k=>k>=TODAY.slice(0,7)&&Object.values(d.months[k].boats||{}).some(b=>b.s.some(v=>typeof v==="number"&&v>0)));
+  if(!mk)return d;const M=d.months[mk];M.reopen={};M.opened={};
+  const today=+TODAY.slice(8),cur=mk===TODAY.slice(0,7);
+  for(const[name,b]of Object.entries(M.boats))b.s.forEach((v,i)=>{if(typeof v==="number"&&v>0&&(!cur||i+1>=today))picks.push([name,i])});
+  const set=(F,[name,i])=>{const L=M.boats[name].s.length;const a=(F[name]||"0".repeat(L)).split("");a[i]="1";F[name]=a.join("")};
+  const step=Math.max(1,Math.floor(picks.length/6));const sel=[0,1,2,3,4,5].map(j=>picks[j*step]).filter(Boolean);
+  sel.slice(0,3).forEach(p=>set(M.reopen,p));sel.slice(3).forEach(p=>set(M.opened,p));
+  window.__demoSel={mk,sel};return d;
+}
+function demoPanel(){
+  if(!DEMO||document.getElementById("npv")||!window.__demoSel)return;
+  const{mk,sel}=window.__demoSel,M=st.seats[mk];if(!M)return;
+  const fmt=([name,i])=>{const y=+mk.slice(0,4),m=+mk.slice(5),dd=i+1;return`${m}/${dd}(${WD[new Date(y,m-1,dd).getDay()]}) ${name} ${M.boats[name].s[i]}석`};
+  const box=document.createElement("div");box.className="npv";box.id="npv";
+  const card=(t,b)=>`<div><i>낚</i><b>${t}<small>지금</small></b><span>${b}</span></div>`;
+  box.innerHTML=`<p class="notice" style="margin:0">미리보기 화면입니다. 깜빡이는 배와 아래 알림은 모양을 보여 주려고 붙인 예시예요 (예약 현황 자체는 실제).</p>`+
+    card(`빈자리 ${sel.length}곳`,sel.slice(0,3).map(fmt).join("<br>"))+
+    card(`취소로 다시 열린 자리 ${Math.min(3,sel.length)}곳`,sel.slice(0,3).map(fmt).join("<br>"))+
+    (sel.length>3?card(`예약이 새로 열림 ${sel.length-3}곳`,sel.slice(3).map(fmt).join("<br>")):"");
+  document.getElementById("notice").after(box);
+  st.m=Math.max(0,MONTHS.indexOf(mk));render();
+}
 function applyData(d){
+  window.__rawData=d;
+  if(DEMO){d=demoize(d);setTimeout(demoPanel,0)}
   st.seats=d.months||{};st.status={updatedAt:d.updatedAt,ok:d.ok,error:(d.errors||[]).join(" / "),sources:d.sources||{}};st.loaded=true;render();
 }
 const IN_APP=!!window.__inScriptable; // 아이폰 Scriptable 앱 안에서 열렸는지
@@ -407,15 +445,26 @@ if(IN_APP){
   $("wOn").checked=!!W.on;$("wForm").hidden=!W.on;$("wOn").onchange=()=>{$("wForm").hidden=!$("wOn").checked};
   $("wInt").value=String(W.interval);$("wFrom").value=W.from||"";$("wTo").value=W.to||"";
   for(let n=1;n<=10;n++){const o=document.createElement("option");o.value=n;o.textContent=n+"석";$("wMin").append(o)}$("wMin").value=String(W.min||1);
-  document.querySelectorAll('input[name="wMode"]').forEach(r=>{r.checked=r.value===(W.mode||"any")});
+  const modes0=Array.isArray(W.modes)?W.modes:(W.mode&&W.mode!=="any"?[W.mode]:[]);
+  document.querySelectorAll('input[name="wMode"]').forEach(r=>{r.checked=modes0.includes(r.value)});
   const chips=(el,items,set,label)=>{el.innerHTML="";items.forEach(v=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label(v);
     b.setAttribute("aria-pressed",String(set.has(v)));b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);if(!set.size)set.add(v);b.setAttribute("aria-pressed",String(set.has(v)))};el.append(b)})};
   chips($("wDows"),[1,2,3,4,5,6,0],selDows,v=>WD[v]);
   chips($("wSp"),["j","f","u"],selSp,v=>SP[v]);
   chips($("wBoats"),allBoats,selBoats,v=>v);
+  // 미리보기: 깜빡임 예시를 붙이고, 아이폰·PC 알림도 예시로 한 번 보냄
+  $("wTest").onclick=()=>{
+    DEMO=!DEMO;const old=document.getElementById("npv");if(old)old.remove();
+    if(window.__rawData)applyData(window.__rawData);
+    $("wTest").querySelector("span").textContent=DEMO?"미리보기 끄기":"알림·깜빡임 미리보기";
+    if(DEMO)setTimeout(()=>{const sel=(window.__demoSel&&window.__demoSel.sel)||[],M=window.__demoSel&&st.seats[window.__demoSel.mk];
+      const lines=sel.map(([name,i])=>{const mk=window.__demoSel.mk,m=+mk.slice(5),dd=i+1;return`${m}/${dd}(${WD[new Date(+mk.slice(0,4),m-1,dd).getDay()]}) ${name} ${M.boats[name].s[i]}석`});
+      window.__host("fishing://testnote?d="+encodeURIComponent(JSON.stringify(lines)))},300);
+  };
   $("wSave").onclick=()=>{
     const cfg={on:$("wOn").checked,interval:+$("wInt").value,from:$("wFrom").value,to:$("wTo").value,dows:[...selDows],min:+$("wMin").value,
-      sp:[...selSp],boats:selBoats.size===allBoats.length?[]:[...selBoats],mode:(document.querySelector('input[name="wMode"]:checked')||{}).value||"any"};
+      sp:[...selSp],boats:selBoats.size===allBoats.length?[]:[...selBoats],modes:[...document.querySelectorAll('input[name="wMode"]:checked')].map(r=>r.value)};
+    cfg.mode=cfg.modes.length?cfg.modes.join("+"):"any";
     window.__watch=cfg;window.__host("fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg)));
   };
 }

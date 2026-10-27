@@ -109,7 +109,7 @@ window.__fishParse = function (kind, html, y, m) {
 };
 true;`;
 
-async function scrapeSite(wv, site, monthList, progress) {
+async function scrapeSite(parser, site, monthList, progress) {
   const out = {};
   const put = (y, m, d, name, s, sp, no) => {
     if (!name || s === null) return;
@@ -119,8 +119,7 @@ async function scrapeSite(wv, site, monthList, progress) {
     b.s[d - 1] = s; b.sp[d - 1] = sp;
     if (no) { b.no = b.no || Array(L).fill(null); b.no[d - 1] = no; }
   };
-  const parse = async (html, y, m) =>
-    wv.evaluateJavaScript(`__fishParse(${JSON.stringify(site.kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
+  const parse = (html, y, m) => parser(site.kind, html, y, m);
   let seen = false;
   for (const [y, m] of monthList) {
     await progress(`${site.host} ${m}월`);
@@ -149,17 +148,19 @@ async function scrapeSite(wv, site, monthList, progress) {
 function merge(old, results, errors, sources, checked) {
   const oldMonths = (old && old.months) || {};
   const months = { ...oldMonths }; // 이번에 확인하지 않은 달은 그대로 둔다
-  const reopened = [];
+  const reopened = [], newlyOpened = [];
   const keys = new Set(checked);
   for (const k of [...keys].sort()) {
     const prev = oldMonths[k] || { boats: {}, reopen: {} };
-    const boats = {}, reopen = {};
+    const boats = {}, reopen = {}, opened = {};
+    const monthSeen = !!oldMonths[k]; // 전에 확인한 달이어야 '새로 열림'을 판단
     for (const site of SITES) {
       const fresh = results[site.id];
       for (const name of site.boats) {
         if (!fresh) {
           if (prev.boats && prev.boats[name]) boats[name] = prev.boats[name];
           if (prev.reopen && prev.reopen[name]) reopen[name] = prev.reopen[name];
+          if (prev.opened && prev.opened[name]) opened[name] = prev.opened[name];
           continue;
         }
         const nb = fresh[k] && fresh[k][name];
@@ -175,11 +176,22 @@ function merge(old, results, errors, sources, checked) {
           flags += on ? "1" : "0";
         });
         if (flags.includes("1")) reopen[name] = flags;
+        // 새로 열린 예약: 전에는 일정이 없던(빈칸) 날에 자리가 생김
+        const pb = prev.boats && prev.boats[name] && prev.boats[name].s, po = (prev.opened && prev.opened[name]) || "";
+        let of = "";
+        nb.s.forEach((v, i) => {
+          const was = po[i] === "1";
+          const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+          if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
+          of += on ? "1" : "0";
+        });
+        if (of.includes("1")) opened[name] = of;
       }
     }
-    if (Object.keys(boats).length) months[k] = { boats, reopen }; else delete months[k];
+    // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
+    if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened }; else delete months[k];
   }
-  return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, sources, months };
+  return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
 }
 
 async function loadJSON(url) {
@@ -329,14 +341,15 @@ async function watch() {
   // 이미 알린 자리는 다시 알리지 않음. 다시 마감되면 기록을 지워서, 또 열리면 다시 알림
   let state = {}; try { state = JSON.parse(fm.readString(WATCH_STATE)) || {}; } catch (e) {}
   // 조건을 바꾸면 처음 한 번은 지금 상태만 기억하고 알리지 않는다 ('새로 열리면' 기준용)
-  const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, cfg.mode]);
+  const modes = Array.isArray(cfg.modes) ? cfg.modes : cfg.mode && cfg.mode !== "any" ? String(cfg.mode).split("+") : [];
+  const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, modes]);
   const baseline = state.sig !== sig;
   if (baseline) state = { sig };
   const prev = state.prev || {}, notified = state.notified || {};
   for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
-  const isNew = (h) => cfg.mode === "reopen" ? prev[h.key] === 0
-    : cfg.mode === "open" ? !baseline && typeof prev[h.key] !== "number" // 전에는 예약을 받지 않던 배·날짜에 자리가 생김
-    : true;
+  // 알림 기준: 아무것도 고르지 않으면 빈자리 전부, 고르면 고른 것 중 하나라도 맞을 때
+  const kindOf = (h) => prev[h.key] === 0 ? "reopen" : !baseline && typeof prev[h.key] !== "number" ? "open" : "";
+  const isNew = (h) => !modes.length || modes.includes(kindOf(h));
   const fresh = hits.filter((h) => !notified[h.key] && isNew(h));
   fresh.forEach((h) => { notified[h.key] = 1; });
   fm.writeString(WATCH_STATE, JSON.stringify({ sig, prev: { ...prev, ...seen }, notified, at: kstIso() }));
@@ -345,7 +358,8 @@ async function watch() {
   const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
   if (fresh.length) {
     const n = new Notification();
-    n.title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : cfg.mode === "open" ? `예약이 새로 열림 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
+    n.title = !modes.length ? `빈자리 ${fresh.length}곳`
+    : [["reopen", "취소로 다시 열린 자리"], ["open", "예약이 새로 열림"]].map(([k, t]) => [t, fresh.filter((h) => kindOf(h) === k).length]).filter(([, n]) => n).map(([t, n]) => `${t} ${n}곳`).join(" · ");
     n.body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
     n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
     n.sound = "default";
@@ -359,11 +373,55 @@ async function watch() {
   return `조건 맞는 자리 ${hits.length}곳, 새 알림 ${fresh.length}곳`;
 }
 
+// ───────────────── 앱을 열지 않고 확인 (단축어 '개인용 자동화'로 정해 둔 시각에 실행) ─────────────────
+// 설정한 기간(1~12개월)을 확인해 결과를 저장하고(앱을 열면 바로 보임), 웹 캘린더에도 올린다.
+// 빈자리 알림을 켜 두었으면 그 조건으로 알리고, 꺼 두었으면 새로 생긴 자리(취소로 다시 열림·새로 열림)를 알린다.
+async function backgroundCheck() {
+  const settings = loadSettings();
+  const ahead = Number.isInteger(settings.ahead) && settings.ahead >= 1 && settings.ahead <= 12 ? settings.ahead : 1;
+  const list = monthsAhead().slice(0, ahead);
+  let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
+  const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
+  if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
+  const parser = await makeParser();
+  const results = {}, errors = [], sources = { ...(old.sources || {}) };
+  await Promise.all(SITES.map(async (site) => {
+    try { results[site.id] = await scrapeSite(parser, site, list, () => null); sources[site.id] = kstIso(); }
+    catch (e) { errors.push(`${site.host}: ${e.message}`); }
+  }));
+  const data = merge(old, results, errors, sources, list.map(([y, m]) => ymKey(y, m)));
+  fm.writeString(CACHE, JSON.stringify(data));
+  try { await upload(data); } catch (e) {}
+  let out = `${list.map(([, m]) => m + "월").join("·")} 확인` + (errors.length ? ` (일부 실패 ${errors.length}곳)` : "");
+  if (settings.watch && settings.watch.on) {
+    try { out += " · " + (await watch()); } catch (e) { out += " · 알림 확인 오류"; }
+  } else {
+    const items = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
+    if (items.length) {
+      const n = new Notification();
+      n.title = `새로 생긴 자리 ${items.length}곳`;
+      n.body = items.slice(0, 6).join("\n") + (items.length > 6 ? `\n외 ${items.length - 6}곳` : "");
+      n.sound = "default";
+      n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+      await n.schedule();
+    }
+    out += ` · 새로 생긴 자리 ${items.length}곳`;
+  }
+  return out;
+}
+
 const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
 
 async function run() {
-  if (config.runsInWidget || !config.runsInApp) {
-    // 위젯·단축어 자동화: 화면 없이 조건만 확인하고 알림
+  if (!config.runsInWidget && !config.runsInApp) {
+    // 단축어 자동화(앱을 열지 않고 실행): 캘린더 결과를 새로 받아 두고, 알림 조건도 확인
+    let out = "";
+    try { out = await backgroundCheck(); } catch (e) { out = "오류: " + e.message; }
+    Script.setShortcutOutput(out);
+    return;
+  }
+  if (config.runsInWidget) {
+    // 위젯: 화면 없이 조건만 확인하고 알림
     const settings = loadSettings();
     if (config.runsInWidget || (settings.watch && settings.watch.on)) {
       let out = "";
@@ -439,6 +497,7 @@ async function main(wv, say) {
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
   const label = (list) => list.map(([y, m]) => `${m}월`).join("·");
 
+  const appParser = (kind, html, y, m) => wv.evaluateJavaScript(`__fishParse(${JSON.stringify(kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
   async function check(list) {
     const keys = list.map(([y, m]) => ymKey(y, m));
     keys.forEach((k) => checked.add(k));
@@ -451,7 +510,7 @@ async function main(wv, say) {
     await Promise.all(groups.map(async (group, gi) => {
       for (const site of group) {
         try {
-          results[site.id] = await scrapeSite(wv, site, list, (t) => { doing[gi] = t; return show(); });
+          results[site.id] = await scrapeSite(appParser, site, list, (t) => { doing[gi] = t; return show(); });
           sources[site.id] = kstIso();
         } catch (e) {
           errors.push(`${site.host}: ${e.message}`);
@@ -466,6 +525,19 @@ async function main(wv, say) {
     old = data;
     await js(`__applySeats(${JSON.stringify(data)})`);
     let msg = errors.length ? `일부 사이트를 읽지 못했습니다: ${errors.join(" / ")}` : "";
+    // 새로 생긴 자리는 아이폰 알림으로도 (앱을 보고 있지 않아도 알림 센터에 남음)
+    const newItems = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
+    if (newItems.length) {
+      try {
+        const n = new Notification();
+        n.title = `새로 생긴 자리 ${newItems.length}곳`;
+        n.body = newItems.slice(0, 6).join("\n") + (newItems.length > 6 ? `\n외 ${newItems.length - 6}곳` : "");
+        n.sound = "default";
+        n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+        n.schedule();
+      } catch (e) {}
+    }
+    if ((data.opened || []).length) msg = `새로 열린 예약 ${data.opened.length}곳: ${data.opened.slice(0, 6).join(", ")}${data.opened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     if (data.reopened.length) msg = `취소로 다시 열린 자리 ${data.reopened.length}곳: ${data.reopened.slice(0, 6).join(", ")}${data.reopened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     try { await upload(data); } catch (e) { msg += (msg ? " · " : "") + "웹 캘린더 반영 실패: " + e.message; }
     await js(`__setChecking(false, ${JSON.stringify(msg)})`);
@@ -503,9 +575,28 @@ async function main(wv, say) {
         const cfg = JSON.parse(decodeURIComponent((/cfg=([^&]*)/.exec(u) || [])[1] || "null"));
         if (cfg && typeof cfg === "object") {
           saveSettings({ ...loadSettings(), watch: cfg });
-          js(`__setChecking(false, ${JSON.stringify(cfg.on ? "빈자리 알림을 켰어요. 홈 화면에 Scriptable 위젯을 추가하면 동작합니다." : "빈자리 알림을 껐어요.")})`);
+          js(`__setChecking(false, ${JSON.stringify(cfg.on ? "빈자리 알림을 켰어요. 앱을 닫아 둔 동안에도 확인하려면 단축어 자동화(또는 위젯)를 설정하세요." : "빈자리 알림을 껐어요.")})`);
         }
       } catch (e) {}
+      return false;
+    }
+    if (u.startsWith("fishing://testnote")) { // 미리보기: 실제 아이폰 알림 모양 보기
+      let lines = [];
+      try { lines = JSON.parse(decodeURIComponent((/d=([^&]*)/.exec(u) || [])[1] || "[]")); } catch (e) {}
+      if (!lines.length) lines = ["11/14(토) 루키나호 3석"];
+      const samples = [
+        [`빈자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)],
+        [`취소로 다시 열린 자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)],
+        [`예약이 새로 열림 ${Math.max(1, lines.length - 3)}곳`, lines.length > 3 ? lines.slice(3) : lines.slice(0, 1)],
+      ];
+      samples.forEach(([t, b], i) => {
+        const n = new Notification();
+        n.title = "[미리보기] " + t; n.body = b.join("\n"); n.sound = "default";
+        n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+        n.setTriggerDate(new Date(Date.now() + 5000 + i * 2500));
+        n.schedule();
+      });
+      js(`__setChecking(false, ${JSON.stringify("5초 뒤 아이폰 알림 예시 3개가 옵니다. 홈 화면이나 잠금 화면으로 나가서 확인해 보세요. (안 오면 설정 → 알림 → Scriptable에서 알림 허용)")})`);
       return false;
     }
     if (u.startsWith("fishing://month")) { // 캘린더를 아직 확인하지 않은 달로 넘김
@@ -521,7 +612,13 @@ async function main(wv, say) {
   await wv.evaluateJavaScript(PARSER);
   console.log("캘린더 표시 완료, 확인 시작");
   await askToken();
-  want(first);
+  // 앱을 닫아 둔 동안(자동화) 최근 30분 안에 확인했으면 열 때 다시 확인하지 않는다
+  let cached = null; try { cached = JSON.parse(fm.readString(CACHE)); } catch (e) {}
+  const age = Date.now() - Date.parse((cached && cached.updatedAt) || 0);
+  if (age < 30 * 60e3 && first.every(([y, m]) => old.months && ymKey(y, m) in old.months)) {
+    first.forEach(([y, m]) => checked.add(ymKey(y, m)));
+    await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, ${JSON.stringify("최근 확인 결과입니다. 새로 확인하려면 '지금 확인'을 누르세요.")})`);
+  } else want(first);
 }
 
 module.exports = { run };
