@@ -328,17 +328,24 @@ async function watch() {
 
   // 이미 알린 자리는 다시 알리지 않음. 다시 마감되면 기록을 지워서, 또 열리면 다시 알림
   let state = {}; try { state = JSON.parse(fm.readString(WATCH_STATE)) || {}; } catch (e) {}
+  // 조건을 바꾸면 처음 한 번은 지금 상태만 기억하고 알리지 않는다 ('새로 열리면' 기준용)
+  const sig = JSON.stringify([cfg.from, cfg.to, cfg.dows, boats, sps, cfg.mode]);
+  const baseline = state.sig !== sig;
+  if (baseline) state = { sig };
   const prev = state.prev || {}, notified = state.notified || {};
   for (const k of Object.keys(notified)) if (k in seen && !(typeof seen[k] === "number" && seen[k] >= min)) delete notified[k];
-  const fresh = hits.filter((h) => !notified[h.key] && (cfg.mode !== "reopen" || prev[h.key] === 0));
+  const isNew = (h) => cfg.mode === "reopen" ? prev[h.key] === 0
+    : cfg.mode === "open" ? !baseline && typeof prev[h.key] !== "number" // 전에는 예약을 받지 않던 배·날짜에 자리가 생김
+    : true;
+  const fresh = hits.filter((h) => !notified[h.key] && isNew(h));
   fresh.forEach((h) => { notified[h.key] = 1; });
-  fm.writeString(WATCH_STATE, JSON.stringify({ prev: { ...prev, ...seen }, notified, at: kstIso() }));
+  fm.writeString(WATCH_STATE, JSON.stringify({ sig, prev: { ...prev, ...seen }, notified, at: kstIso() }));
 
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
   const fmt = (h) => `${h.m}/${h.d}(${WD[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
   if (fresh.length) {
     const n = new Notification();
-    n.title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
+    n.title = cfg.mode === "reopen" ? `취소로 다시 열린 자리 ${fresh.length}곳` : cfg.mode === "open" ? `예약이 새로 열림 ${fresh.length}곳` : `빈자리 ${fresh.length}곳`;
     n.body = fresh.slice(0, 6).map(fmt).join("\n") + (fresh.length > 6 ? `\n외 ${fresh.length - 6}곳` : "");
     n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
     n.sound = "default";

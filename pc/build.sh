@@ -16,7 +16,8 @@ s = s.replace("<title>", "<title>PC · ", 1)
 # 알림 기준에 '예약이 새로 열리면' 추가 (PC 버전만)
 o = '<label><input type="radio" name="wMode" value="reopen"> 취소로 다시 열린 자리만</label>'
 assert o in s
-s = s.replace(o, o + '\n          <label><input type="radio" name="wMode" value="open"> 아직 안 열린 예약이 새로 열리면</label>')
+if 'value="open"' not in s:
+    s = s.replace(o, o + '\n          <label><input type="radio" name="wMode" value="open"> 아직 안 열린 예약이 새로 열리면</label>')
 open("web/index.html", "w", encoding="utf-8").write(s)
 PY
 mkdir -p dist
