@@ -340,14 +340,46 @@ async function watchCollect(rules, parse) {
       }
       for (const [y, m, url] of pages.values()) {
         const res = await parse(site.kind, await get(url), y, m);
-        for (const [d, name, s, sp] of res.rows) {
+        for (const [d, name, s, sp, no] of res.rows) {
           if (!days.has(`${y}-${m}-${d}`)) continue;
-          rows.push({ key: `${ymKey(y, m)}|${name}|${d}`, ym: ymKey(y, m), y, m, d, name, s, sp });
+          rows.push({ key: `${ymKey(y, m)}|${name}|${d}`, ym: ymKey(y, m), y, m, d, name, s, sp, no });
         }
       }
     } catch (e) { errors.push(`${site.host}: ${e.message}`); }
   }));
-  return { rows, errors };
+  const monthKeys = [...new Set([...days.values()].map(([y, m]) => ymKey(y, m)))];
+  return { rows, errors, monthKeys };
+}
+// 알림 확인에서 받은 날짜들을 캘린더 결과에도 넣는다 (먼 달도 메인 배너·깜빡임에 바로 보이게)
+// 처음 보는 달은 '확인했음'만 남기고, 전에 본 달에서 비어 있던 날에 자리가 생기면 '새로 열림'으로 표시
+function applyWatchRows(data, rows, monthKeys) {
+  const out = JSON.parse(JSON.stringify(data || { months: {} }));
+  out.months = out.months || {};
+  const first = new Set();
+  for (const k of monthKeys || []) if (!out.months[k]) { out.months[k] = { boats: {}, reopen: {}, opened: {} }; first.add(k); }
+  const setFlag = (F, name, i, L, on) => {
+    const a = String(F[name] || "").padEnd(L, "0").slice(0, L).split(""); a[i] = on ? "1" : "0";
+    const v = a.join(""); if (v.includes("1")) F[name] = v; else delete F[name];
+  };
+  const fresh = { reopened: [], opened: [] };
+  for (const h of rows) {
+    const M = out.months[h.ym];
+    if (!M || h.s === null || h.s === undefined) continue;
+    M.boats = M.boats || {}; M.reopen = M.reopen || {}; M.opened = M.opened || {};
+    const L = daysIn(h.y, h.m), i = h.d - 1;
+    const b = M.boats[h.name] || (M.boats[h.name] = { s: Array(L).fill(null), sp: "j".repeat(L) });
+    const before = b.s[i], v = h.s, pos = typeof v === "number" && v > 0;
+    const wasR = String(M.reopen[h.name] || "")[i] === "1", wasO = String(M.opened[h.name] || "")[i] === "1";
+    const onR = pos && (before === 0 || wasR);
+    const onO = pos && !onR && (wasO || (!first.has(h.ym) && before == null));
+    if (onR && !wasR) fresh.reopened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
+    if (onO && !wasO) fresh.opened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
+    b.s[i] = v;
+    const sp = String(b.sp || "").padEnd(L, "j").slice(0, L).split(""); sp[i] = h.sp || "j"; b.sp = sp.join("");
+    if (h.no) { b.no = b.no || Array(L).fill(null); b.no[i] = h.no; }
+    setFlag(M.reopen, h.name, i, L, onR); setFlag(M.opened, h.name, i, L, onO);
+  }
+  return { data: out, fresh };
 }
 // 규칙마다 새로 알릴 자리를 고른다. 한 번 알린 자리는 다시 마감(또는 기준 아래)됐다가 열릴 때까지 다시 안 알림
 function watchDecide(rules, rows, state) {
@@ -397,10 +429,15 @@ async function watch() {
   if (!cfg.on || !Object.values(rules).some((r) => r && r.on)) { line("알림 꺼짐", 12, "#6a7983"); line("앱의 설정에서 켤 수 있어요", 10, "#6a7983"); done(6); return "알림 꺼짐"; }
 
   const parse = await makeParser();
-  const { rows, errors } = await watchCollect(rules, parse);
+  const { rows, errors, monthKeys } = await watchCollect(rules, parse);
   let state = {}; try { state = JSON.parse(fm.readString(WATCH_STATE)) || {}; } catch (e) {}
   const res = watchDecide(rules, rows, state);
   fm.writeString(WATCH_STATE, JSON.stringify(res.state));
+  // 받은 날짜들을 캘린더 결과에도 넣어 둔다 (앱을 열면 먼 달도 메인 배너에 바로 보임)
+  try {
+    const cache = JSON.parse(fm.readString(CACHE));
+    if (cache) fm.writeString(CACHE, JSON.stringify(applyWatchRows(cache, rows, errors.length ? [] : monthKeys).data));
+  } catch (e) {}
   const msg = watchMessage(res.fresh);
   if (res.fresh.length) {
     const n = new Notification();
@@ -596,6 +633,35 @@ async function main(wv, say) {
   const want = (list) => { if (list.length) { queue.push(list); pump(); } };
   const ymOf = (u) => { const m = /[?&]ym=(\d{4})-(\d{2})/.exec(u); return m ? [+m[1], +m[2]] : null; };
 
+  // 앱을 열 때 알림 조건도 한 번 확인 (캘린더 확인이 끝난 뒤). 결과는 캘린더에도 넣어 먼 달도 배너에 보이게
+  async function appWatch() {
+    const cfg = loadSettings().watch;
+    const rules = watchRules(cfg || {});
+    if (!cfg || !cfg.on || !Object.values(rules).some((r) => r && r.on)) return;
+    while (busy || queue.length) await sleep(800);
+    busy = true;
+    try {
+      await js(`__setChecking(true, "알림 조건 확인 중…")`);
+      const { rows, errors, monthKeys } = await watchCollect(rules, appParser);
+      let state = {}; try { state = JSON.parse(fm.readString(WATCH_STATE)) || {}; } catch (e) {}
+      const res = watchDecide(rules, rows, state);
+      fm.writeString(WATCH_STATE, JSON.stringify(res.state));
+      const msg = watchMessage(res.fresh);
+      if (res.fresh.length) {
+        const n = new Notification();
+        n.title = msg.title; n.body = msg.body; n.sound = "default";
+        n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+        await n.schedule();
+      }
+      old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
+      fm.writeString(CACHE, JSON.stringify(old));
+      await js(`__applySeats(${JSON.stringify(old)})`);
+      await js(`__setChecking(false, ${JSON.stringify(res.fresh.length ? `${msg.title}: ${msg.lines.join(", ")}` : `알림 조건 확인 완료 · 조건 맞는 자리 ${res.hits}곳` + (errors.length ? " (일부 사이트 실패)" : ""))})`);
+    } catch (e) {
+      await js(`__setChecking(false, ${JSON.stringify("알림 조건 확인 중 오류: " + e.message)})`);
+    } finally { busy = false; pump(); }
+  }
+
   wv.shouldAllowRequest = (req) => {
     const u = req.url || "";
     if (u.startsWith("fishing://check")) { // 지금 확인: 3개월 + 보고 있는 달(그 뒤라면)
@@ -663,6 +729,7 @@ async function main(wv, say) {
     first.forEach(([y, m]) => checked.add(ymKey(y, m)));
     await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, ${JSON.stringify("최근 확인 결과입니다. 새로 확인하려면 '지금 확인'을 누르세요.")})`);
   } else want(first);
+  appWatch();
 }
 
 module.exports = { run };

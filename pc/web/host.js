@@ -318,14 +318,46 @@ async function watchCollect(rules, parse) {
       }
       for (const [y, m, url] of pages.values()) {
         const res = await parse(site.kind, await get(url), y, m);
-        for (const [d, name, s, sp] of res.rows) {
+        for (const [d, name, s, sp, no] of res.rows) {
           if (!days.has(`${y}-${m}-${d}`)) continue;
-          rows.push({ key: `${ymKey(y, m)}|${name}|${d}`, ym: ymKey(y, m), y, m, d, name, s, sp });
+          rows.push({ key: `${ymKey(y, m)}|${name}|${d}`, ym: ymKey(y, m), y, m, d, name, s, sp, no });
         }
       }
     } catch (e) { errors.push(`${site.host}: ${e.message}`); }
   }));
-  return { rows, errors };
+  const monthKeys = [...new Set([...days.values()].map(([y, m]) => ymKey(y, m)))];
+  return { rows, errors, monthKeys };
+}
+// 알림 확인에서 받은 날짜들을 캘린더 결과에도 넣는다 (먼 달도 메인 배너·깜빡임에 바로 보이게)
+// 처음 보는 달은 '확인했음'만 남기고, 전에 본 달에서 비어 있던 날에 자리가 생기면 '새로 열림'으로 표시
+function applyWatchRows(data, rows, monthKeys) {
+  const out = JSON.parse(JSON.stringify(data || { months: {} }));
+  out.months = out.months || {};
+  const first = new Set();
+  for (const k of monthKeys || []) if (!out.months[k]) { out.months[k] = { boats: {}, reopen: {}, opened: {} }; first.add(k); }
+  const setFlag = (F, name, i, L, on) => {
+    const a = String(F[name] || "").padEnd(L, "0").slice(0, L).split(""); a[i] = on ? "1" : "0";
+    const v = a.join(""); if (v.includes("1")) F[name] = v; else delete F[name];
+  };
+  const fresh = { reopened: [], opened: [] };
+  for (const h of rows) {
+    const M = out.months[h.ym];
+    if (!M || h.s === null || h.s === undefined) continue;
+    M.boats = M.boats || {}; M.reopen = M.reopen || {}; M.opened = M.opened || {};
+    const L = daysIn(h.y, h.m), i = h.d - 1;
+    const b = M.boats[h.name] || (M.boats[h.name] = { s: Array(L).fill(null), sp: "j".repeat(L) });
+    const before = b.s[i], v = h.s, pos = typeof v === "number" && v > 0;
+    const wasR = String(M.reopen[h.name] || "")[i] === "1", wasO = String(M.opened[h.name] || "")[i] === "1";
+    const onR = pos && (before === 0 || wasR);
+    const onO = pos && !onR && (wasO || (!first.has(h.ym) && before == null));
+    if (onR && !wasR) fresh.reopened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
+    if (onO && !wasO) fresh.opened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
+    b.s[i] = v;
+    const sp = String(b.sp || "").padEnd(L, "j").slice(0, L).split(""); sp[i] = h.sp || "j"; b.sp = sp.join("");
+    if (h.no) { b.no = b.no || Array(L).fill(null); b.no[i] = h.no; }
+    setFlag(M.reopen, h.name, i, L, onR); setFlag(M.opened, h.name, i, L, onO);
+  }
+  return { data: out, fresh };
 }
 // 규칙마다 새로 알릴 자리를 고른다. 한 번 알린 자리는 다시 마감(또는 기준 아래)됐다가 열릴 때까지 다시 안 알림
 function watchDecide(rules, rows, state) {
@@ -369,11 +401,19 @@ function watchMessage(fresh) {
     const rules = watchRules(cfg);
     if (!cfg.on || watching || !Object.values(rules).some((r) => r && r.on)) return;
     watching = true;
+    let mine = false;
     try {
-      while (busy) await sleep(2000); // 캘린더 확인이 끝난 뒤에
-      const { rows } = await watchCollect(rules, async (kind, html, y, m) => parse(kind, html, y, m));
+      while (busy || queue.length) await sleep(1000); // 캘린더 확인이 끝난 뒤에
+      busy = mine = true;
+      __setChecking(true, "알림 조건 확인 중…");
+      const { rows, errors, monthKeys } = await watchCollect(rules, async (kind, html, y, m) => parse(kind, html, y, m));
       const res = watchDecide(rules, rows, (await store.get("watch-state")) || {});
       await store.put("watch-state", res.state);
+      // 받은 날짜들을 캘린더 결과에도 넣는다 (먼 달도 메인 배너에 바로 보임)
+      old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
+      await store.put("seats", old);
+      __applySeats(old);
+      if (!res.fresh.length) __setChecking(false, `알림 조건 확인 완료 · 조건 맞는 자리 ${res.hits}곳` + (errors.length ? " (일부 사이트 실패)" : ""));
       if (res.fresh.length) {
         const msg = watchMessage(res.fresh);
         if ("Notification" in window && Notification.permission === "granted") {
@@ -383,7 +423,8 @@ function watchMessage(fresh) {
         __setChecking(false, `${msg.title}: ${msg.lines.join(", ")}`);
         document.title = `(${res.fresh.length}) ` + document.title.replace(/^\(\d+\) /, "");
       }
-    } finally { watching = false; }
+    } catch (e) { __setChecking(false, "알림 조건 확인 중 오류: " + e.message); }
+    finally { watching = false; if (mine) { busy = false; pump(); } }
   }
   function startWatch() {
     clearInterval(watchTimer); watchTimer = null;
@@ -404,4 +445,5 @@ function watchMessage(fresh) {
   window.__checked = [];
   want(first);
   startWatch();
+  runWatch(); // 시작할 때도 알림 조건을 한 번 확인 (캘린더 확인이 끝난 뒤)
 })();
