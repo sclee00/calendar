@@ -407,6 +407,39 @@ function watchDecide(rules, rows, state) {
   }
   return { fresh, hits: hits.size, state: { prev: { ...prev, ...seen }, sigs: newSigs, notified: newNot, at: kstIso() } };
 }
+// 알림 종류별로 따로 센다: 새로 알린 수, 그리고 지금 상태(취소로 다시 열림·새로 열림은 아직 확인 안 한 표시, 빈자리는 자리 있는 곳)
+function ruleCounts(rules, res, data) {
+  const out = [];
+  for (const [type] of RULE_KINDS) {
+    const r = rules[type];
+    if (!r || !r.on) continue;
+    const R = ruleOf(r);
+    const fresh = res.fresh.filter((f) => f.type === type).length;
+    let now = 0;
+    if (type === "any") now = res.hits;
+    else if (!data) now = null; // 캘린더 결과가 없으면 지금 상태는 모름
+    else {
+      const F = type === "reopen" ? "reopen" : "opened";
+      for (const [mk, M] of Object.entries((data && data.months) || {})) {
+        const flags = (M && M[F]) || {}, B = (M && M.boats) || {};
+        for (const [name, f] of Object.entries(flags)) {
+          const b = B[name];
+          if (!b || !R.boats.includes(name)) continue;
+          String(f).split("").forEach((c, i) => {
+            const s = b.s[i];
+            if (c === "1" && typeof s === "number" && s >= R.min && R.want.has(`${mk}|${i + 1}`) && R.sps.includes(spOf2((b.sp || "")[i]))) now++;
+          });
+        }
+      }
+    }
+    out.push({ type, fresh, now });
+  }
+  return out;
+}
+function countsText(c) {
+  const name = { reopen: "취소로 다시 열린 자리", open: "새로 열린 예약", any: "빈자리 있음" };
+  return c.map((x) => `${name[x.type]}: 새로 ${x.fresh}곳` + (x.now === null ? "" : ` · 조건 안에 ${x.now}곳`)).join(" / ");
+}
 function watchMessage(fresh) {
   const WDN = ["일", "월", "화", "수", "목", "금", "토"];
   const fmt = (h) => `${h.m}/${h.d}(${WDN[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
@@ -434,9 +467,10 @@ async function watch() {
   const res = watchDecide(rules, rows, state);
   fm.writeString(WATCH_STATE, JSON.stringify(res.state));
   // 받은 날짜들을 캘린더 결과에도 넣어 둔다 (앱을 열면 먼 달도 메인 배너에 바로 보임)
+  let counts = ruleCounts(rules, res, null);
   try {
     const cache = JSON.parse(fm.readString(CACHE));
-    if (cache) fm.writeString(CACHE, JSON.stringify(applyWatchRows(cache, rows, errors.length ? [] : monthKeys).data));
+    if (cache) { const u = applyWatchRows(cache, rows, errors.length ? [] : monthKeys).data; fm.writeString(CACHE, JSON.stringify(u)); counts = ruleCounts(rules, res, u); }
   } catch (e) {}
   const msg = watchMessage(res.fresh);
   if (res.fresh.length) {
@@ -447,11 +481,13 @@ async function watch() {
     await n.schedule();
   }
   const now = new Date(Date.now() + 9 * 3600e3);
-  line(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} 확인 · 새 알림 ${res.fresh.length}곳`, 11, "#18232c");
+  line(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} 확인`, 11, "#18232c");
+  const short = { reopen: "취소", open: "새로 열림", any: "빈자리" };
+  counts.forEach((x) => line(`${short[x.type]} 새로 ${x.fresh}` + (x.now === null ? "" : ` · 조건 안 ${x.now}`), 10, "#18232c"));
   msg.lines.slice(0, 3).forEach((t) => line(t, 11, "#13a06e", true));
   if (errors.length) line("일부 사이트 확인 실패", 10, "#e0473a");
   done(Math.max(0.5, (+cfg.interval || 60) / 60));
-  return `새 알림 ${res.fresh.length}곳` + (res.hits ? ` · 빈자리 조건 ${res.hits}곳` : "");
+  return countsText(counts);
 }
 
 // ───────────────── 앱을 열지 않고 확인 (단축어 '개인용 자동화'로 정해 둔 시각에 실행) ─────────────────
@@ -656,7 +692,8 @@ async function main(wv, say) {
       old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
       fm.writeString(CACHE, JSON.stringify(old));
       await js(`__applySeats(${JSON.stringify(old)})`);
-      await js(`__setChecking(false, ${JSON.stringify(res.fresh.length ? `${msg.title}: ${msg.lines.join(", ")}` : `알림 조건 확인 완료 · 새로 알릴 자리 없음` + (res.hits ? ` ('빈자리 있음' 조건에 맞는 자리 ${res.hits}곳은 이미 알림)` : "") + (errors.length ? " (일부 사이트 실패)" : ""))})`);
+      const summary = "알림 조건 확인 · " + countsText(ruleCounts(rules, res, old)) + (errors.length ? " (일부 사이트 실패)" : "");
+      await js(`__setChecking(false, ${JSON.stringify(res.fresh.length ? `${msg.title}: ${msg.lines.join(", ")} — ${summary}` : summary)})`);
     } catch (e) {
       await js(`__setChecking(false, ${JSON.stringify("알림 조건 확인 중 오류: " + e.message)})`);
     } finally { busy = false; pump(); }

@@ -385,6 +385,39 @@ function watchDecide(rules, rows, state) {
   }
   return { fresh, hits: hits.size, state: { prev: { ...prev, ...seen }, sigs: newSigs, notified: newNot, at: kstIso() } };
 }
+// 알림 종류별로 따로 센다: 새로 알린 수, 그리고 지금 상태(취소로 다시 열림·새로 열림은 아직 확인 안 한 표시, 빈자리는 자리 있는 곳)
+function ruleCounts(rules, res, data) {
+  const out = [];
+  for (const [type] of RULE_KINDS) {
+    const r = rules[type];
+    if (!r || !r.on) continue;
+    const R = ruleOf(r);
+    const fresh = res.fresh.filter((f) => f.type === type).length;
+    let now = 0;
+    if (type === "any") now = res.hits;
+    else if (!data) now = null; // 캘린더 결과가 없으면 지금 상태는 모름
+    else {
+      const F = type === "reopen" ? "reopen" : "opened";
+      for (const [mk, M] of Object.entries((data && data.months) || {})) {
+        const flags = (M && M[F]) || {}, B = (M && M.boats) || {};
+        for (const [name, f] of Object.entries(flags)) {
+          const b = B[name];
+          if (!b || !R.boats.includes(name)) continue;
+          String(f).split("").forEach((c, i) => {
+            const s = b.s[i];
+            if (c === "1" && typeof s === "number" && s >= R.min && R.want.has(`${mk}|${i + 1}`) && R.sps.includes(spOf2((b.sp || "")[i]))) now++;
+          });
+        }
+      }
+    }
+    out.push({ type, fresh, now });
+  }
+  return out;
+}
+function countsText(c) {
+  const name = { reopen: "취소로 다시 열린 자리", open: "새로 열린 예약", any: "빈자리 있음" };
+  return c.map((x) => `${name[x.type]}: 새로 ${x.fresh}곳` + (x.now === null ? "" : ` · 조건 안에 ${x.now}곳`)).join(" / ");
+}
 function watchMessage(fresh) {
   const WDN = ["일", "월", "화", "수", "목", "금", "토"];
   const fmt = (h) => `${h.m}/${h.d}(${WDN[new Date(Date.UTC(h.y, h.m - 1, h.d)).getUTCDay()]}) ${h.name} ${h.s}석`;
@@ -413,14 +446,15 @@ function watchMessage(fresh) {
       old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
       await store.put("seats", old);
       __applySeats(old);
-      if (!res.fresh.length) __setChecking(false, `알림 조건 확인 완료 · 새로 알릴 자리 없음` + (res.hits ? ` ('빈자리 있음' 조건에 맞는 자리 ${res.hits}곳은 이미 알림)` : "") + (errors.length ? " (일부 사이트 실패)" : ""));
+      const summary = "알림 조건 확인 · " + countsText(ruleCounts(rules, res, old)) + (errors.length ? " (일부 사이트 실패)" : "");
+      if (!res.fresh.length) __setChecking(false, summary);
       if (res.fresh.length) {
         const msg = watchMessage(res.fresh);
         if ("Notification" in window && Notification.permission === "granted") {
           const n = new Notification(msg.title, { body: msg.body, tag: "fishing-seats", requireInteraction: true });
           n.onclick = () => { window.focus(); n.close(); };
         }
-        __setChecking(false, `${msg.title}: ${msg.lines.join(", ")}`);
+        __setChecking(false, `${msg.title}: ${msg.lines.join(", ")} — ${summary}`);
         document.title = `(${res.fresh.length}) ` + document.title.replace(/^\(\d+\) /, "");
       }
     } catch (e) { __setChecking(false, "알림 조건 확인 중 오류: " + e.message); }
