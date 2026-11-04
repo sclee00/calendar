@@ -71,7 +71,89 @@ function classifySpecies(primary, fallback) {
   return a !== "u" ? a : pick(fallback);
 }
 
+// ── 선사 공지사항: 앱을 열 때 확인해서 새 공지가 있으면 알림 (처음 한 번은 지금 공지만 기억) ──
+const NOTICE_SITES = [
+  { id: "lukina", label: "루키나", kind: "ss", list: "https://lukina.sunsang24.com/ship/event_list" },
+  { id: "dy", label: "동양낚시마트", kind: "ss", list: "https://dyfishing.sunsang24.com/ship/event_list" },
+  { id: "khan", label: "칸피싱", kind: "tf", home: "https://khanfishing.com/" },
+  { id: "jeil", label: "제일바다낚시", kind: "tf", home: "https://jnaksi.com/" },
+];
+// 페이지 안(DOM)에서 쓰는 분석기. kind: ss(선상24 공지 목록) · home(첫 화면에서 공지 게시판 찾기) · board(게시판 글 목록)
+function noticeParse(kind, html, base) {
+  var doc = new DOMParser().parseFromString(html, "text/html");
+  var clean = function (t) { return String(t || "").replace(/\s+/g, " ").trim(); };
+  var abs = function (h) { try { return new URL(h, base); } catch (e) { return null; } };
+  var out = [], seen = {};
+  if (kind === "ss") {
+    doc.querySelectorAll('a[href*="/ship/event_detail/"]').forEach(function (a) {
+      var u = abs(a.getAttribute("href")), t = clean(a.textContent);
+      if (!u || !t || seen[u.pathname]) return;
+      seen[u.pathname] = 1; out.push({ key: u.pathname, url: u.href, title: t.replace(/^\[+/, "[") });
+    });
+    return out;
+  }
+  if (kind === "home") {
+    var links = Array.prototype.slice.call(doc.querySelectorAll("a[href]")).filter(function (a) {
+      var h = a.getAttribute("href") || ""; return /공지/.test(clean(a.textContent)) && !/^(javascript|#)/i.test(h);
+    });
+    links.sort(function (a, b) { return (/공지사항/.test(clean(b.textContent)) ? 1 : 0) - (/공지사항/.test(clean(a.textContent)) ? 1 : 0); });
+    var u0 = links.length ? abs(links[0].getAttribute("href")) : null;
+    return u0 ? [{ key: "board", url: u0.href, title: clean(links[0].textContent) }] : [];
+  }
+  var b = abs(base), mid = b && b.searchParams.get("mid");
+  doc.querySelectorAll("a[href]").forEach(function (a) {
+    var h = a.getAttribute("href") || "";
+    if (/^(javascript|#)/i.test(h)) return;
+    var u = abs(h);
+    if (!u || !b || u.host !== b.host) return;
+    if (mid && u.searchParams.get("mid") !== mid) return;
+    var ids = [];
+    u.searchParams.forEach(function (v, k) { if (!/^(mid|page|p|category|sort|order|search|keyword|mode|year|month|day)$/i.test(k) && /^\d{2,}$/.test(v)) ids.push(k + "=" + v); });
+    if (!ids.length) return;
+    var t = clean(a.textContent);
+    if (t.length < 2 || /^\d+$/.test(t)) return;
+    var key = u.pathname + "?" + (mid ? "mid=" + mid + "&" : "") + ids.sort().join("&");
+    if (seen[key]) return;
+    seen[key] = 1; out.push({ key: key, url: u.href, title: t });
+  });
+  return out;
+}
+// parse(kind, html, base) → 목록, getText(url) → html, state: { seen:{site:[key]}, board:{site:url} }
+async function checkNotices(parse, getText, state) {
+  state = state || {};
+  const seenAll = state.seen || {}, board = state.board || {};
+  const sites = [], fresh = [];
+  await Promise.all(NOTICE_SITES.map(async (s) => {
+    const r = { id: s.id, label: s.label, items: [], error: "" };
+    try {
+      let list = [];
+      if (s.kind === "ss") list = await parse("ss", await getText(s.list), s.list);
+      else {
+        let url = board[s.id];
+        if (url) { try { list = await parse("board", await getText(url), url); } catch (e) { list = []; } }
+        if (!list.length) { // 게시판 주소를 (다시) 찾는다
+          const h = await parse("home", await getText(s.home), s.home);
+          if (h.length) { url = h[0].url; board[s.id] = url; list = await parse("board", await getText(url), url); }
+        }
+      }
+      const before = seenAll[s.id];
+      const known = new Set(before || []);
+      list.forEach((n) => { n.isNew = !!before && !known.has(n.key); if (n.isNew) fresh.push({ site: s.label, title: n.title, url: n.url }); });
+      // 새 공지를 위로
+      r.items = [...list.filter((n) => n.isNew), ...list.filter((n) => !n.isNew)].slice(0, 8);
+      seenAll[s.id] = [...new Set([...(before || []), ...list.map((n) => n.key)])].slice(-400);
+      if (!list.length) r.error = "목록 없음";
+    } catch (e) { r.error = e.message || "실패"; }
+    sites.push(r);
+  }));
+  sites.sort((a, b) => NOTICE_SITES.findIndex((x) => x.id === a.id) - NOTICE_SITES.findIndex((x) => x.id === b.id));
+  return { sites, fresh, state: { seen: seenAll, board, at: kstIso(), sites } };
+}
+
+const NOTICE_STATE = fm.joinPath(DIR, "notices.json");
+
 const PARSER = `
+window.__noticeParse = ${noticeParse.toString()};
 window.__fishParse = function (kind, html, y, m) {
   const KEEP = ${JSON.stringify(KEEP)};
   const sq = s => (s || "").replace(/\\s+/g, "");
@@ -699,6 +781,30 @@ async function main(wv, say) {
     } finally { busy = false; pump(); }
   }
 
+  // 앱을 열 때 선사 공지사항 확인: 새 공지는 아이폰 알림(누르면 그 공지가 열림) + 메인의 '선사 공지사항'
+  async function appNotices() {
+    let st0 = {}; try { st0 = JSON.parse(fm.readString(NOTICE_STATE)) || {}; } catch (e) {}
+    if (st0.sites) await js(`__setNotices(${JSON.stringify(st0.sites.map((x) => ({ ...x, items: (x.items || []).map((n) => ({ ...n, isNew: false })) })))}, 0)`);
+    try {
+      const parseN = (kind, html, base) => wv.evaluateJavaScript(`__noticeParse(${JSON.stringify(kind)}, ${JSON.stringify(html)}, ${JSON.stringify(base)})`);
+      const res = await checkNotices(parseN, get, st0);
+      fm.writeString(NOTICE_STATE, JSON.stringify(res.state));
+      await js(`__setNotices(${JSON.stringify(res.sites)}, ${res.fresh.length})`);
+      for (const n of res.fresh.slice(0, 5)) {
+        const x = new Notification();
+        x.title = `${n.site} 새 공지`; x.body = n.title; x.sound = "default";
+        x.openURL = n.url; // 누르면 그 공지가 열림
+        await x.schedule();
+      }
+      if (res.fresh.length > 5) {
+        const x = new Notification();
+        x.title = `새 공지 ${res.fresh.length}건`; x.body = res.fresh.slice(5).map((n) => `${n.site} · ${n.title}`).join("\n");
+        x.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+        await x.schedule();
+      }
+    } catch (e) { console.error(e); }
+  }
+
   wv.shouldAllowRequest = (req) => {
     const u = req.url || "";
     if (u.startsWith("fishing://check")) { // 지금 확인: 3개월 + 보고 있는 달(그 뒤라면)
@@ -766,7 +872,7 @@ async function main(wv, say) {
     first.forEach(([y, m]) => checked.add(ymKey(y, m)));
     await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, ${JSON.stringify("최근 확인 결과입니다. 새로 확인하려면 '지금 확인'을 누르세요.")})`);
   } else want(first);
-  appWatch();
+  appWatch().then(appNotices, appNotices);
 }
 
 module.exports = { run };

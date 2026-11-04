@@ -81,6 +81,26 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
   .upd .btn[hidden]{display:none!important}
   .kbtn{font-size:12px;padding:2px 8px}
 }
+.fold{border-radius:10px}
+.fold>summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600;color:var(--ink);padding:6px 2px;user-select:none}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;margin:0 3px}
+.fold[open]>summary::before{transform:rotate(45deg)}
+.fold>summary .fs{font-weight:400;color:var(--muted);font-size:12px;white-space:normal}
+.fold>summary{white-space:nowrap}
+.setp .fold{min-width:0;width:100%}
+.fold>.meta,.fold>.bar{padding:2px 0 6px}
+.fold.notices[hidden]{display:none}
+.nbadge{background:#ff3d6e;color:#fff;border-radius:999px;font-size:11.5px;font-weight:700;padding:1px 8px;animation:reblink 1.4s ease-in-out infinite}
+.nlist{display:grid;gap:10px;padding:2px 0 8px}
+.nlist .ns b{font-size:12.5px;color:var(--muted);display:block;margin-bottom:3px}
+.nlist a{display:block;font-size:13px;color:var(--ink);text-decoration:none;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);margin-bottom:4px;line-height:1.35}
+.nlist a.new{border-color:#ff3d6e;box-shadow:0 0 0 1px #ff3d6e inset}
+.nlist a.new::before{content:"새 공지";font-size:11px;font-weight:700;color:#fff;background:#ff3d6e;border-radius:6px;padding:0 5px;margin-right:6px}
+.nlist small{color:var(--muted);font-size:12px}
+.setp .fold{flex:1 1 100%;border-top:1px solid var(--line);padding-top:2px}
+.setp .fold:first-child{border-top:0}
+.fbody{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:2px 0 8px}
 .setp{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px}
 .setp small{flex:1 1 100%;color:var(--muted);font-size:12px}
 .setp select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 8px}
@@ -198,9 +218,12 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
   <p class="notice" id="notice" hidden></p>
   <div class="setp" id="setPanel" hidden>
+    <details class="fold" id="fold-ahead"><summary>확인 기간 <small class="fs" id="sumAhead"></small></summary><div class="fbody">
     <span>처음 열 때 확인할 기간</span>
     <select id="aheadSel" aria-label="확인 기간"></select>
     <small>짧을수록 빠릅니다. 그 뒤 달은 캘린더를 넘기면 그때 확인해요.</small>
+    </div></details>
+    <details class="fold" id="fold-watch"><summary>빈자리 알림 <small class="fs" id="sumWatch"></small></summary><div class="fbody">
     <div class="wbox" id="wBox">
       <label class="wsw"><input type="checkbox" id="wOn"> <b>빈자리 알림</b> <span class="muted">내가 확인하지 않아도 정해 둔 간격으로 확인하고 알려줘요</span></label>
       <div class="wform" id="wForm">
@@ -211,13 +234,15 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <button class="btn ghost" id="wTest" type="button"><span>알림·깜빡임 미리보기</span></button>
       <small>PC 버전은 이 캘린더 탭이 열려 있는 동안만 정해 둔 간격으로 확인하고, 조건에 맞는 자리가 생기면 데스크톱 알림을 띄워요. 처음 켤 때 브라우저가 알림 허용을 물으면 '허용'을 누르세요.</small>
     </div>
+    </div></details>
   </div>
-  <div class="meta" id="meta"></div>
-  <div class="bar">
+  <details class="fold notices" id="fold-notice" hidden><summary>선사 공지사항 <span class="nbadge" id="nBadge" hidden></span><small class="fs" id="sumNotice"></small></summary><div class="nlist" id="noticeBox"></div></details>
+  <details class="fold" id="fold-meta"><summary>범례</summary><div class="meta" id="meta"></div></details>
+  <details class="fold" id="fold-bar"><summary>필터 <small class="fs" id="sumBar"></small></summary><div class="bar">
     <button class="tog" id="onlyOpen" aria-pressed="false" type="button">자리 있는 배만</button>
     <div class="spkey" id="spKey" role="group" aria-label="어종"></div>
     <div class="key" id="key" role="group" aria-label="선박"></div>
-  </div>
+  </div></details>
 
   <div class="main">
     <div class="cal">
@@ -416,7 +441,30 @@ function newAlert(){
   if(L.length>12){const m=document.createElement("small");m.textContent=`외 ${L.length-12}곳`;list.append(m)}
 }
 document.getElementById("naOk").onclick=()=>{newlyOpenedList().forEach(x=>ACK.add(`${x.mk}|${x.name}|${x.d}`));saveAck();render()};
-function render(){syncAck();newAlert();keyRow();grid();panel();stamp();askMonth()}
+// 접기·펼치기: 기능별로 숨겨 두고, 이 기기에 기억
+const FOLD_DEFAULT={"fold-ahead":false,"fold-watch":false,"fold-notice":false,"fold-meta":false,"fold-bar":false};
+document.querySelectorAll("details.fold").forEach(d=>{let v=null;try{v=localStorage.getItem("fold:"+d.id)}catch(e){}
+  d.open=v===null?!!FOLD_DEFAULT[d.id]:v==="1";
+  d.addEventListener("toggle",()=>{try{localStorage.setItem("fold:"+d.id,d.open?"1":"0")}catch(e){}})});
+function foldSums(){
+  const set=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t};
+  set("sumBar",`배 ${BOATS.filter(b=>st.on.has(b.id)).length}/${BOATS.length} · 어종 ${st.sp.size}/3`+(st.only?" · 자리 있는 배만":""));
+  set("sumAhead",window.__ahead?`${window.__ahead}개월`:"");
+  const w=window.__watch||{},R=w.rules||{},nm={reopen:"취소",open:"새로 열림",any:"빈자리"};
+  const on=Object.keys(nm).filter(k=>R[k]&&R[k].on).map(k=>nm[k]);
+  set("sumWatch",w.on&&on.length?`켜짐 · ${on.join("·")}`:"꺼짐");
+}
+function render(){syncAck();newAlert();keyRow();grid();panel();stamp();askMonth();foldSums()}
+// 선사 공지사항 (앱·PC가 확인해서 넣어 줌): sites=[{label,items:[{title,url,isNew}],error}]
+window.__setNotices=(sites,freshCount)=>{
+  const f=document.getElementById("fold-notice"),box=document.getElementById("noticeBox");if(!f)return;
+  const has=(sites||[]).some(x=>x.items&&x.items.length);f.hidden=!has&&!(sites||[]).length;
+  const esc=t=>String(t||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  box.innerHTML=(sites||[]).map(x=>`<div class="ns"><b>${esc(x.label)}</b>${(x.items||[]).slice(0,5).map(n=>`<a href="${esc(n.url)}" target="fish_notice"${n.isNew?' class="new"':""}>${esc(n.title)}</a>`).join("")||`<small>${x.error?"공지를 읽지 못했습니다":"공지 없음"}</small>`}</div>`).join("");
+  const nb=document.getElementById("nBadge");nb.hidden=!freshCount;nb.textContent=`새 공지 ${freshCount}`;
+  document.getElementById("sumNotice").textContent=freshCount?"":"새 공지 없음";
+  if(freshCount){f.open=true;f.scrollIntoView({behavior:"smooth",block:"nearest"})}
+};
 document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
 document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};

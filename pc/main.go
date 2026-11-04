@@ -52,7 +52,7 @@ var (
 	lastPing = time.Now()
 	pingMu   sync.Mutex
 	stripRe  = regexp.MustCompile(`(?is)<script\b.*?</script>|<style\b.*?</style>|<!--.*?-->`)
-	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state)$`)
+	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state|notices)$`)
 )
 
 func main() {
