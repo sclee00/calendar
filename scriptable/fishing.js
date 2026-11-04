@@ -399,7 +399,7 @@ function watchDecide(rules, rows, state) {
     for (const h of rows) {
       if (!R.boats.includes(h.name) || !R.want.has(`${h.ym}|${h.d}`) || !R.sps.includes(spOf2(h.sp))) continue;
       if (!(typeof h.s === "number" && h.s >= R.min)) continue;
-      hits.add(h.key);
+      if (type === "any") hits.add(h.key); // '빈자리 있음' 조건에 지금 맞는 자리 수 (취소·새로 열림은 새로 생긴 것만 셈)
       const ok = type === "any" ? true : type === "reopen" ? prev[h.key] === 0 : !baseline && typeof prev[h.key] !== "number";
       if (ok && !N[h.key]) { N[h.key] = 1; fresh.push({ type, label, h }); }
     }
@@ -447,11 +447,11 @@ async function watch() {
     await n.schedule();
   }
   const now = new Date(Date.now() + 9 * 3600e3);
-  line(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} 확인 · 조건 맞는 자리 ${res.hits}곳`, 11, "#18232c");
+  line(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} 확인 · 새 알림 ${res.fresh.length}곳`, 11, "#18232c");
   msg.lines.slice(0, 3).forEach((t) => line(t, 11, "#13a06e", true));
   if (errors.length) line("일부 사이트 확인 실패", 10, "#e0473a");
   done(Math.max(0.5, (+cfg.interval || 60) / 60));
-  return `조건 맞는 자리 ${res.hits}곳, 새 알림 ${res.fresh.length}곳`;
+  return `새 알림 ${res.fresh.length}곳` + (res.hits ? ` · 빈자리 조건 ${res.hits}곳` : "");
 }
 
 // ───────────────── 앱을 열지 않고 확인 (단축어 '개인용 자동화'로 정해 둔 시각에 실행) ─────────────────
@@ -656,7 +656,7 @@ async function main(wv, say) {
       old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
       fm.writeString(CACHE, JSON.stringify(old));
       await js(`__applySeats(${JSON.stringify(old)})`);
-      await js(`__setChecking(false, ${JSON.stringify(res.fresh.length ? `${msg.title}: ${msg.lines.join(", ")}` : `알림 조건 확인 완료 · 조건 맞는 자리 ${res.hits}곳` + (errors.length ? " (일부 사이트 실패)" : ""))})`);
+      await js(`__setChecking(false, ${JSON.stringify(res.fresh.length ? `${msg.title}: ${msg.lines.join(", ")}` : `알림 조건 확인 완료 · 새로 알릴 자리 없음` + (res.hits ? ` ('빈자리 있음' 조건에 맞는 자리 ${res.hits}곳은 이미 알림)` : "") + (errors.length ? " (일부 사이트 실패)" : ""))})`);
     } catch (e) {
       await js(`__setChecking(false, ${JSON.stringify("알림 조건 확인 중 오류: " + e.message)})`);
     } finally { busy = false; pump(); }

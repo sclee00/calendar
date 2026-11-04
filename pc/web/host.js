@@ -377,7 +377,7 @@ function watchDecide(rules, rows, state) {
     for (const h of rows) {
       if (!R.boats.includes(h.name) || !R.want.has(`${h.ym}|${h.d}`) || !R.sps.includes(spOf2(h.sp))) continue;
       if (!(typeof h.s === "number" && h.s >= R.min)) continue;
-      hits.add(h.key);
+      if (type === "any") hits.add(h.key); // '빈자리 있음' 조건에 지금 맞는 자리 수 (취소·새로 열림은 새로 생긴 것만 셈)
       const ok = type === "any" ? true : type === "reopen" ? prev[h.key] === 0 : !baseline && typeof prev[h.key] !== "number";
       if (ok && !N[h.key]) { N[h.key] = 1; fresh.push({ type, label, h }); }
     }
@@ -413,7 +413,7 @@ function watchMessage(fresh) {
       old = applyWatchRows(old, rows, errors.length ? [] : monthKeys).data;
       await store.put("seats", old);
       __applySeats(old);
-      if (!res.fresh.length) __setChecking(false, `알림 조건 확인 완료 · 조건 맞는 자리 ${res.hits}곳` + (errors.length ? " (일부 사이트 실패)" : ""));
+      if (!res.fresh.length) __setChecking(false, `알림 조건 확인 완료 · 새로 알릴 자리 없음` + (res.hits ? ` ('빈자리 있음' 조건에 맞는 자리 ${res.hits}곳은 이미 알림)` : "") + (errors.length ? " (일부 사이트 실패)" : ""));
       if (res.fresh.length) {
         const msg = watchMessage(res.fresh);
         if ("Notification" in window && Notification.permission === "granted") {
