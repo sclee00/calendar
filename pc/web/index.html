@@ -36,6 +36,20 @@
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);line-height:1.45}
 .wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:12px}
+.newalert{margin:10px 0 4px;border-radius:14px;padding:10px 12px;background:linear-gradient(135deg,#ff8a00,#ff3d6e);color:#fff;box-shadow:0 6px 18px rgba(255,61,110,.35);display:grid;gap:8px}
+.newalert[hidden]{display:none!important}
+.newalert .nah{display:flex;gap:12px;align-items:center}
+.newalert .nah>div{flex:1;display:grid;gap:1px}
+.newalert strong{font-size:17px;letter-spacing:-.01em}
+.newalert small{font-size:12px;opacity:.92}
+.newalert .bell{position:relative;flex:none;width:42px;height:42px;border-radius:50%;background:#fff;color:#ff3d6e;display:grid;place-items:center;animation:ring 1.2s ease-in-out infinite;transform-origin:50% 10%}
+.newalert .bell svg{width:24px;height:24px}
+.newalert .bell b{position:absolute;top:-4px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#1b1b1b;color:#fff;font-size:12px;line-height:20px;text-align:center}
+@keyframes ring{0%,60%,100%{transform:rotate(0)}10%{transform:rotate(14deg)}20%{transform:rotate(-12deg)}30%{transform:rotate(9deg)}40%{transform:rotate(-6deg)}50%{transform:rotate(3deg)}}
+@media (prefers-reduced-motion:reduce){.newalert .bell{animation:none}}
+.newalert .naok{flex:none;font:inherit;font-size:12.5px;font-weight:600;border:0;border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.22);color:#fff;cursor:pointer}
+.nalist{display:flex;flex-wrap:wrap;gap:6px}
+.nalist button{font:inherit;font-size:13px;font-weight:600;border:0;border-radius:999px;padding:5px 11px;background:#fff;color:#c2185b;cursor:pointer}
 .top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
 h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .upd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
@@ -175,6 +189,12 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <a class="btn ghost" id="check" href="#"><span>지금 확인</span></a>
       <button class="btn ghost" id="setBtn" type="button" hidden aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>설정</span></button>
     </div>
+  </div>
+  <div class="newalert" id="newAlert" hidden role="status" aria-live="polite">
+    <div class="nah"><span class="bell" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><b id="naCount">1</b></span>
+      <div><strong id="naTitle">새로 열린 예약</strong><small id="naSub"></small></div>
+      <button type="button" class="naok" id="naOk">확인함</button></div>
+    <div class="nalist" id="naList"></div>
   </div>
   <p class="notice" id="notice" hidden></p>
   <div class="setp" id="setPanel" hidden>
@@ -365,7 +385,38 @@ function askMonth(){
     if(MONTHS[st.m]!==mk||window.__asked.has(mk))return;
     window.__asked.add(mk);window.__host("fishing://month?ym="+mk)},900);
 }
-function render(){syncAck();keyRow();grid();panel();stamp();askMonth()}
+// 조건에 맞는 '안 열렸다가 새로 열린 자리'를 맨 위에 크게 알림 (빈자리 알림의 '새로 열린 예약' 조건, 없으면 전체)
+function openRule(){const w=window.__watch;const r=w&&w.rules&&w.rules.open;return r&&(r.on||r.from||r.boats)?r:null}
+function inRule(r,mk,d,name,s,sp){
+  if(!r)return true;
+  const ds=`${mk}-${pad(d)}`,from=r.from||TODAY;let to=r.to;
+  if(!to){const t=new Date(from+"T00:00:00");t.setDate(t.getDate()+30);to=`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`}
+  if(ds<from||ds>to)return false;
+  const dows=r.dows&&r.dows.length?r.dows:[0,1,2,3,4,5,6];if(!dows.includes(new Date(+mk.slice(0,4),+mk.slice(5)-1,d).getDay()))return false;
+  if(r.boats&&r.boats.length&&!r.boats.includes(name))return false;
+  if(r.sp&&r.sp.length&&!r.sp.includes(spOf(sp)))return false;
+  return s>=Math.max(1,+r.min||1);
+}
+function newlyOpenedList(){const r=openRule(),out=[];
+  for(const[mk,M]of Object.entries(st.seats||{})){if(mk<TODAY.slice(0,7))continue;const O=(M&&M.opened)||{},B=(M&&M.boats)||{};
+    for(const[name,f]of Object.entries(O)){const b=B[name];if(!b)continue;String(f).split("").forEach((c,i)=>{const s=b.s[i],d=i+1;
+      if(c==="1"&&typeof s==="number"&&s>0&&`${mk}-${pad(d)}`>=TODAY&&!ACK.has(`${mk}|${name}|${d}`)&&inRule(r,mk,d,name,s,(b.sp||"")[i]))out.push({mk,d,name,s})})}}
+  return out.sort((a,b)=>(a.mk+pad(a.d)).localeCompare(b.mk+pad(b.d)))}
+function newAlert(){
+  const box=document.getElementById("newAlert"),L=newlyOpenedList();
+  box.hidden=!L.length;if(!L.length){document.getElementById("naList").innerHTML="";return}
+  const r=openRule();
+  document.getElementById("naCount").textContent=L.length;
+  document.getElementById("naTitle").textContent=`새로 열린 예약 ${L.length}곳`;
+  document.getElementById("naSub").textContent=r?"알림 설정의 '새로 열린 예약' 조건에 맞는 자리 · 눌러서 날짜로 이동":"안 열렸다가 새로 열린 자리 · 눌러서 날짜로 이동";
+  const list=document.getElementById("naList");list.innerHTML="";
+  L.slice(0,12).forEach(x=>{const b=document.createElement("button");b.type="button";const m=+x.mk.slice(5);
+    b.textContent=`${m}/${x.d}(${WD[new Date(+x.mk.slice(0,4),m-1,x.d).getDay()]}) ${x.name} ${x.s}석`;
+    b.onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(x.mk));st.day=x.d;render();document.getElementById("panel").scrollIntoView({behavior:"smooth",block:"start"})};list.append(b)});
+  if(L.length>12){const m=document.createElement("small");m.textContent=`외 ${L.length-12}곳`;list.append(m)}
+}
+document.getElementById("naOk").onclick=()=>{newlyOpenedList().forEach(x=>ACK.add(`${x.mk}|${x.name}|${x.d}`));saveAck();render()};
+function render(){syncAck();newAlert();keyRow();grid();panel();stamp();askMonth()}
 document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
 document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
@@ -485,7 +536,7 @@ if(IN_APP){
   $("wSave").onclick=()=>{
     const rules={};KINDS.forEach(([k])=>{rules[k]=forms[k]()});
     const cfg={on:$("wOn").checked,interval:+$("wInt").value,rules};
-    window.__watch=cfg;window.__host("fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg)));
+    window.__watch=cfg;render();window.__host("fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg)));
   };
 }
 if(!IN_APP){
