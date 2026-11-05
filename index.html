@@ -268,19 +268,20 @@ const MONTHS=Object.keys(TIDE);
 const ORDER=[
  ["루키나 2호","luk","루2"],["루키나호","luk","루1"],["팀에프원","dy","에원"],["팀에프투","dy","에투"],["고트호","dy","고트"],
  ["와이파이호","khan","와이"],["욜로호","khan","욜로"],["시크릿호","khan","시크"],["베스트1호","khan","베1"],["베스트3호","khan","베3"],["제트호","khan","제트"],["왕만두호","khan","왕만"],
- ["모비딕호","jeil","모비"],["마루호","jeil","마루"],["스모키호","jeil","스모"],["로또호","jeil","로또"]];
-const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab}));
-const U={luk:"https://lukina.sunsang24.com/ship/schedule_fleet",dy:"https://dyfishing.sunsang24.com/ship/schedule_fleet",khan:"https://khanfishing.com/index.php?mid=bk",jeil:"https://jnaksi.com/index.php?mid=bk"};
+ ["모비딕호","jeil","모비"],["마루호","jeil","마루"],["스모키호","jeil","스모"],["로또호","jeil","로또"],
+ ["전국 시크릿 블랙","secret","블랙"],["전국 시크릿 레드","secret","레드"],["전국 시크릿 3호","secret","3호"]]; // 시크릿 피싱 클럽: 낚시 버스(버스 아이콘)
+const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab,bus:u==="secret"}));
+const U={luk:"https://lukina.sunsang24.com/ship/schedule_fleet",dy:"https://dyfishing.sunsang24.com/ship/schedule_fleet",khan:"https://khanfishing.com/index.php?mid=bk",jeil:"https://jnaksi.com/index.php?mid=bk",secret:"https://secretbus.thefishing.kr/index.php?mid=bk"};
 // 고른 날짜·배로 바로 가는 주소 (선상24: 그 일정의 예약 화면, 없으면 그 달 일정표)
-const HOST={luk:"https://lukina.sunsang24.com",dy:"https://dyfishing.sunsang24.com",khan:"https://khanfishing.com",jeil:"https://jnaksi.com"};
-const PA={"와이파이호":5264,"욜로호":5725,"시크릿호":5342,"베스트1호":5339,"베스트3호":5340,"제트호":5341,"왕만두호":5283,"모비딕호":4465,"마루호":6233,"스모키호":6232,"로또호":6362}; // 더피싱 배 번호
+const HOST={luk:"https://lukina.sunsang24.com",dy:"https://dyfishing.sunsang24.com",khan:"https://khanfishing.com",jeil:"https://jnaksi.com",secret:"https://secretbus.thefishing.kr"};
+const PA={"와이파이호":5264,"욜로호":5725,"시크릿호":5342,"베스트1호":5339,"베스트3호":5340,"제트호":5341,"왕만두호":5283,"모비딕호":4465,"마루호":6233,"스모키호":6232,"로또호":6362,"전국 시크릿 블랙":3199,"전국 시크릿 레드":3201,"전국 시크릿 3호":6136}; // 더피싱 배 번호
 function bookUrl(b,mk,d,s){
   const M=monthBoats(mk)[b.name]||{},no=M.no&&M.no[d-1];
   if(b.u==="luk"||b.u==="dy"){
     if(no&&s==="open")return `${HOST[b.u]}/mypage/reservation_ready/${no}`;
     return `${U[b.u]}/${mk.replace("-","")}`;
   }
-  // 칸피싱·제일: 예약 목록에서 그 배만, 그 날짜부터 보이게
+  // 칸피싱·제일·시크릿 버스: 예약 목록에서 그 배(버스)만, 그 날짜부터 보이게
   return `${U[b.u]}&year=${mk.slice(0,4)}&month=${mk.slice(5)}&day=${pad(d)}`+(PA[b.name]?`&mode=list&PA_N_UID=${PA[b.name]}#list`:"#list");
 }
 const SP={j:"주꾸미·갑오징어",f:"광어·우럭 등 물고기",u:"어종 미표기"};
@@ -289,7 +290,8 @@ const SHAPE={
   g:{d:"M2 16C2 7.5 10 5 19 5S33 8 35 12L46 9.5 40 14 47 16 40 18 46 22.5 35 20C33 24 28 27 19 27S2 24.5 2 16Z",tx:18,ty:16.5},
   j:{d:"M9 17C7 7 15 2 24 2S41 7 39 17L41 25Q43 30 39 29L35 22 32 30Q30 31 29 29L27 22 24 30 21 22 19 29Q18 31 16 30L13 22 9 29Q5 30 7 25Z",tx:24,ty:12},
   f:{d:"M3 16C9 5 25 3 35 13L45 6 43 16 45 26 35 19C25 29 9 27 3 16Z",tx:19,ty:16.5},
-  u:{d:"M2 17H46L40 28H8Z M23 4V17H25V4Z M25 5L38 15H25Z",tx:24,ty:22}
+  u:{d:"M2 17H46L40 28H8Z M23 4V17H25V4Z M25 5L38 15H25Z",tx:24,ty:22},
+  bus:{d:"M4 7Q4 3 8 3H40Q44 3 44 7V23Q44 25 42 25H6Q4 25 4 23Z M9 28.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0Z M32 28.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0Z",tx:24,ty:14}
 };
 // tidal range color: green (small) → red (large)
 const RMIN=200,RMAX=950;
@@ -306,7 +308,7 @@ if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.nam
 if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
 function badge(b,cls,sp,title,style=""){
-  const S=SHAPE[sp]||SHAPE.j;
+  const S=b.bus?SHAPE.bus:(SHAPE[sp]||SHAPE.j);
   return `<span class="t ${cls}" title="${title}"${style?` style="${style}"`:""}><svg viewBox="0 0 48 32" aria-hidden="true"><path class="shape" d="${S.d}"/>`+
     (b.ab?`<text x="${S.tx}" y="${S.ty}" text-anchor="middle" dominant-baseline="central">${b.ab}</text>`:"")+`</svg></span>`;
 }
@@ -386,8 +388,8 @@ function stamp(){
   if(!st.loaded)return;
   if(!s||!s.updatedAt){el.textContent="아직 업데이트 기록이 없습니다";return}
   const f=v=>{const t=new Date(v);return isNaN(t)?"":`${t.getMonth()+1}/${t.getDate()} ${pad(t.getHours())}:${pad(t.getMinutes())}`};
-  const S=s.sources||{};const a=f(S.lukina||S.dy||s.updatedAt),b=f(S.khan||S.jeil);
-  el.textContent=`루키나·동양 ${a}`+(b?` · 칸피싱·제일 ${b}`:"")+" 기준";
+  const S=s.sources||{};const a=f(S.lukina||S.dy||s.updatedAt),b=f(S.khan||S.jeil),c=f(S.secret);
+  el.textContent=`루키나·동양 ${a}`+(b?` · 칸피싱·제일 ${b}`:"")+(c?` · 시크릿버스 ${c}`:"")+" 기준";
 }
 // 깜빡임 리셋: 확인한 "다시 열린 자리"는 이 기기에 기억해 두고 깜빡이지 않게 함
 let ACK=new Set();try{ACK=new Set(JSON.parse(localStorage.getItem("ackReopen")||"[]"))}catch(e){}

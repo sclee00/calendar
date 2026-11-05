@@ -38,10 +38,11 @@ var allowed = map[string]bool{
 	"dyfishing.sunsang24.com":   true,
 	"khanfishing.com":           true,
 	"jnaksi.com":                true,
+	"secretbus.thefishing.kr":   true,
 	"raw.githubusercontent.com": true,
 }
 
-var boatsAll = []string{"루키나 2호", "루키나호", "팀에프원", "팀에프투", "고트호", "와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호", "모비딕호", "마루호", "스모키호", "로또호"}
+var boatsAll = []string{"루키나 2호", "루키나호", "팀에프원", "팀에프투", "고트호", "와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호", "모비딕호", "마루호", "스모키호", "로또호", "전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"}
 
 var (
 	dataDir  string

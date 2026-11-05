@@ -10,6 +10,7 @@ const SITES = [
   { id: "dy", kind: "sunsang24", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
   { id: "khan", kind: "thefishing", host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
   { id: "jeil", kind: "thefishing", host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
+  { id: "secret", kind: "thefishing", host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";

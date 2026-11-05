@@ -10,6 +10,7 @@
     { id: "dy", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
     { id: "khan", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
     { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
+    { id: "secret", kind: "tf", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
   const KEEP = SITES.flatMap((s) => s.boats);
   const pad = (n) => String(n).padStart(2, "0");
@@ -179,6 +180,7 @@ const NOTICE_SITES = [
   { id: "dy", label: "동양낚시마트", kind: "ss", list: "https://dyfishing.sunsang24.com/ship/event_list" },
   { id: "khan", label: "칸피싱", kind: "tf", home: "https://khanfishing.com/" },
   { id: "jeil", label: "제일바다낚시", kind: "tf", home: "https://jnaksi.com/" },
+  { id: "secret", label: "시크릿 버스", kind: "tf", home: "https://secretbus.thefishing.kr/" },
 ];
 // 페이지 안(DOM)에서 쓰는 분석기. kind: ss(선상24 공지 목록) · home(첫 화면에서 공지 게시판 찾기) · board(게시판 글 목록)
 function noticeParse(kind, html, base) {
