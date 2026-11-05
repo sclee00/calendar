@@ -150,7 +150,10 @@ async function scrapeTheFishing(host) {
         let kind = "";
         tds.eq(1).find('img[alt="낚시종류"]').each((_, i) => { kind = $(i).closest("tr").text(); });
         const rowText = tds.first().text() + " " + tds.eq(1).find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + tds.eq(1).text();
-        put(yy, mm, dd, name, stc(alt), spc(kind, rowText));
+        // 예약하기 버튼은 있어도 출조 설명(낚시종류·안내)이 비어 있으면 아직 안 열린 것으로 본다
+        const noDesc = !tds.eq(1).find("img").length && !tds.eq(1).text().trim();
+        let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null;
+        put(yy, mm, dd, name, st, spc(kind, rowText));
         found++;
       });
     }

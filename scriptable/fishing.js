@@ -186,7 +186,10 @@ window.__fishParse = function (kind, html, y, m) {
       const alt = [...last.querySelectorAll("img")].map(i => i.alt).join(" ") + " " + last.textContent;
       let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach(i => { kind2 = i.closest("tr").textContent; });
       const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map(i => i.alt || "").join(" ") + " " + tds[1].textContent;
-      rows.push([dd, name, stc(alt), spc(kind2, rowText)]); found++;
+      // 예약하기 버튼은 있어도 출조 설명(낚시종류·안내)이 비어 있으면 아직 안 열린 것으로 본다
+      const noDesc = !tds[1].querySelector("img") && !tds[1].textContent.trim();
+      let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null;
+      rows.push([dd, name, st, spc(kind2, rowText)]); found++;
     });
   }
   return { rows, found };
@@ -355,7 +358,10 @@ function regexParse(kind, html, y, m) {
         const alt = [...last.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(last);
         const kind2 = strip((seg.match(/alt="낚시종류"[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/) || [])[1]);
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
-        rows.push([+day.slice(6), sp.name, stc(alt), spc(kind2, rowText)]); found++;
+        const desc = cells.length > 2 ? cells[1] : "";
+        const noDesc = cells.length > 2 && !/<img/i.test(desc) && !strip(desc);
+        let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null; // 출조 설명이 없으면 안 열린 것
+        rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText)]); found++;
       });
     }
   }

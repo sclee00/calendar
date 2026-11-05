@@ -87,7 +87,10 @@
         const alt = [...last.querySelectorAll("img")].map((i) => i.alt).join(" ") + " " + last.textContent;
         let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach((i) => { kind2 = i.closest("tr").textContent; });
         const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map((i) => i.alt || "").join(" ") + " " + tds[1].textContent;
-        rows.push([dd, name, stc(alt), spc(kind2, rowText)]); found++;
+        // 예약하기 버튼은 있어도 출조 설명(낚시종류·안내)이 비어 있으면 아직 안 열린 것으로 본다
+      const noDesc = !tds[1].querySelector("img") && !tds[1].textContent.trim();
+      let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null;
+      rows.push([dd, name, st, spc(kind2, rowText)]); found++;
       });
     }
     return { rows, found };
