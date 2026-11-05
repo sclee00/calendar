@@ -154,6 +154,8 @@ async function scrapeTheFishing(host) {
         // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
         let st = stc(alt); if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds.eq(1).text())) st = "w";
         if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
+        // 출조 버스: 예약 안내·현황 칸이 아예 비어 있으면 표시하지 않음(null)
+        if (host.startsWith("secretbus.") && !tds.eq(1).find("img").length && !tds.eq(1).text().trim()) st = null;
         put(yy, mm, dd, name, st, spc(kind, rowText));
         found++;
       });

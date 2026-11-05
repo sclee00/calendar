@@ -15,7 +15,7 @@ const SITES = [
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 4;
+const PARSE_V = 5;
 const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
@@ -192,6 +192,8 @@ window.__fishParse = function (kind, html, y, m) {
       // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
       let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\\s*역|[가-힣]+항/.test(tds[1].textContent)) st = "w";
       if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
+      // 출조 버스: 예약 안내·현황 칸이 아예 비어 있으면 표시하지 않음(null)
+      if (kind === "bus" && !tds[1].querySelector("img") && !tds[1].textContent.trim()) st = null;
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
     });
   }
@@ -364,6 +366,7 @@ function regexParse(kind, html, y, m) {
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
         let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(strip(seg))) st = "w"; // 출조 버스: 장소 설명이 없으면 안 열린 것
         if (st === null) st = "w";
+        if (kind === "bus" && cells.length > 2 && !/<img/i.test(cells[1]) && !strip(cells[1])) st = null; // 출조 버스: 안내·현황이 빈칸이면 표시 안 함
         rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText)]); found++;
       });
     }
