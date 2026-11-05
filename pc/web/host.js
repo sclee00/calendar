@@ -70,9 +70,8 @@
         const name = norm(t.querySelector(".ship_info .title")?.textContent || "");
         const sd = t.querySelector("[data-sdate]")?.dataset.sdate; if (!name || !sd) return;
         const [, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
-        const st0 = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
-        if (st0 !== null) found++;
-        const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
+        const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
+        if (st !== null) found++;
         const no = +((t.querySelector(".btn_user_reservation, .btn_ship_reservation, [data-schedule_no]") || {}).dataset?.schedule_no || 0) || null;
         rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || "")), no]);
       });
@@ -88,11 +87,8 @@
         const alt = [...last.querySelectorAll("img")].map((i) => i.alt).join(" ") + " " + last.textContent;
         let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach((i) => { kind2 = i.closest("tr").textContent; });
         const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map((i) => i.alt || "").join(" ") + " " + tds[1].textContent;
-        // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
-      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds[1].textContent)) st = "w";
-      if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
-      // 출조 버스: 예약 안내·현황 칸이 아예 비어 있으면 표시하지 않음(null)
-      if (kind === "bus" && !tds[1].querySelector("img") && !tds[1].textContent.trim()) st = null;
+        // 출조 버스만: 장소·일정 안내는 있는데 예약창이 아직 안 열린(상태 칸이 빈) 일정 → "w"(점선 아이콘)
+      let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
       });
     }
@@ -429,16 +425,7 @@ function applyWatchRows(data, rows, monthKeys) {
   const fresh = { reopened: [], opened: [] };
   for (const h of rows) {
     const M = out.months[h.ym];
-    if (!M) continue;
-    if (h.s === null || h.s === undefined) { // 목록엔 있지만 안 열린 일정(출조 설명 없음·오픈예정): 전에 받은 자리 정보를 지운다
-      const ob = M.boats && M.boats[h.name];
-      if (ob && ob.s && ob.s[h.d - 1] != null && ob.s[h.d - 1] !== "x") {
-        ob.s[h.d - 1] = null;
-        const L0 = daysIn(h.y, h.m);
-        ["reopen", "opened"].forEach((F) => { if (M[F] && M[F][h.name]) setFlag(M[F], h.name, h.d - 1, L0, false); });
-      }
-      continue;
-    }
+    if (!M || h.s === null || h.s === undefined) continue;
     M.boats = M.boats || {}; M.reopen = M.reopen || {}; M.opened = M.opened || {};
     const L = daysIn(h.y, h.m), i = h.d - 1;
     const b = M.boats[h.name] || (M.boats[h.name] = { s: Array(L).fill(null), sp: "j".repeat(L) });

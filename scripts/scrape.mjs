@@ -113,9 +113,8 @@ async function scrapeSunsang24(host) {
       if (mm !== m) return;
       const rem = T.find(".remain");
       const txt = rem.length ? rem.first().text() : T.find(".ship_info2").first().text();
-      const st0 = stc(txt);
-      if (st0 !== null) n++;
-      const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
+      const st = stc(txt);
+      if (st !== null) n++;
       const no = +(T.find("[data-schedule_no]").first().attr("data-schedule_no") || 0) || null;
       put(yy, mm, dd, name, st, spc(T.find("#fish").first().text(), T.find(".fishspecies").first().text() + " " + T.find(".small_event").first().text()), no);
     });
@@ -151,11 +150,8 @@ async function scrapeTheFishing(host) {
         let kind = "";
         tds.eq(1).find('img[alt="낚시종류"]').each((_, i) => { kind = $(i).closest("tr").text(); });
         const rowText = tds.first().text() + " " + tds.eq(1).find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + tds.eq(1).text();
-        // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
-        let st = stc(alt); if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds.eq(1).text())) st = "w";
-        if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
-        // 출조 버스: 예약 안내·현황 칸이 아예 비어 있으면 표시하지 않음(null)
-        if (host.startsWith("secretbus.") && !tds.eq(1).find("img").length && !tds.eq(1).text().trim()) st = null;
+        // 출조 버스만: 장소·일정 안내는 있는데 예약창이 아직 안 열린(상태 칸이 빈) 일정 → "w"(점선 아이콘)
+        let st = stc(alt); if (st === null && host.startsWith("secretbus.") && tds.eq(1).text().trim()) st = "w";
         put(yy, mm, dd, name, st, spc(kind, rowText));
         found++;
       });

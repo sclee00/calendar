@@ -300,7 +300,7 @@ const SHAPE={
 const RMIN=200,RMAX=950;
 const rcol=v=>{const t=Math.max(0,Math.min(1,(v-RMIN)/(RMAX-RMIN)));return `hsl(${Math.round(140-140*t)} 72% ${Math.round(34+6*Math.sin(t*Math.PI))}%)`};
 const WD=["일","월","화","수","목","금","토"];
-const LBL={open:"자리 있음",full:"마감",cancel:"출조 취소",wait:"일정만 있음 · 예약 불가"};
+const LBL={open:"자리 있음",full:"마감",cancel:"출조 취소",wait:"일정만 있음 · 예약창 안 열림"};
 const status=v=>v===null||v===undefined?null:v==="x"?"cancel":v==="w"?"wait":v>0?"open":"full";
 const pad=n=>String(n).padStart(2,"0");
 const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -328,7 +328,7 @@ function meta(){
   const stops=[0,.25,.5,.75,1].map(t=>rcol(RMIN+t*(RMAX-RMIN))).join(",");
   document.getElementById("meta").innerHTML=
     Object.keys(SP).map(k=>`<span>${badge(demo,"neutral",k,SP[k],"width:24px;height:16px")}${SP[k]}</span>`).join("")+
-    `<span><i class="sw" style="background:var(--open)"></i>자리 있음</span><span><i class="sw blink" style="background:var(--open)"></i>취소로 다시 생긴 자리(천천히)</span><span><i class="sw blink2" style="background:var(--open)"></i>새로 열린 예약(빠르게)</span><span><i class="sw" style="background:var(--full)"></i>마감</span><span><i class="sw" style="background:var(--cancel)"></i>취소</span><span><i class="sw dash"></i>일정만 있음(예약 불가)</span>`+
+    `<span><i class="sw" style="background:var(--open)"></i>자리 있음</span><span><i class="sw blink" style="background:var(--open)"></i>취소로 다시 생긴 자리(천천히)</span><span><i class="sw blink2" style="background:var(--open)"></i>새로 열린 예약(빠르게)</span><span><i class="sw" style="background:var(--full)"></i>마감</span><span><i class="sw" style="background:var(--cancel)"></i>취소</span><span><i class="sw dash"></i>출조 버스 일정만 있음(예약창 안 열림)</span>`+
     `<span>고저차 ${RMIN}<i class="grad" style="background:linear-gradient(90deg,${stops})"></i>${RMAX}cm</span>`;
 }
 function spRow(){
