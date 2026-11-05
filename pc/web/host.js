@@ -70,8 +70,9 @@
         const name = norm(t.querySelector(".ship_info .title")?.textContent || "");
         const sd = t.querySelector("[data-sdate]")?.dataset.sdate; if (!name || !sd) return;
         const [, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
-        const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
-        if (st !== null) found++;
+        const st0 = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
+        if (st0 !== null) found++;
+        const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
         const no = +((t.querySelector(".btn_user_reservation, .btn_ship_reservation, [data-schedule_no]") || {}).dataset?.schedule_no || 0) || null;
         rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || "")), no]);
       });
@@ -88,7 +89,8 @@
         let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach((i) => { kind2 = i.closest("tr").textContent; });
         const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map((i) => i.alt || "").join(" ") + " " + tds[1].textContent;
         // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
-      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds[1].textContent)) st = null;
+      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds[1].textContent)) st = "w";
+      if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
       });
     }
@@ -163,7 +165,7 @@
           let of = "";
           nb.s.forEach((v, i) => {
             const was = po[i] === "1";
-            const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+            const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
             if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
             of += on ? "1" : "0";
           });
@@ -441,7 +443,7 @@ function applyWatchRows(data, rows, monthKeys) {
     const before = b.s[i], v = h.s, pos = typeof v === "number" && v > 0;
     const wasR = String(M.reopen[h.name] || "")[i] === "1", wasO = String(M.opened[h.name] || "")[i] === "1";
     const onR = pos && (before === 0 || wasR);
-    const onO = pos && !onR && (wasO || (!first.has(h.ym) && before == null));
+    const onO = pos && !onR && (wasO || (!first.has(h.ym) && (before == null || before === "w")));
     if (onR && !wasR) fresh.reopened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
     if (onO && !wasO) fresh.opened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
     b.s[i] = v;

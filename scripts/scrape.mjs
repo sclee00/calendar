@@ -113,8 +113,9 @@ async function scrapeSunsang24(host) {
       if (mm !== m) return;
       const rem = T.find(".remain");
       const txt = rem.length ? rem.first().text() : T.find(".ship_info2").first().text();
-      const st = stc(txt);
-      if (st !== null) n++;
+      const st0 = stc(txt);
+      if (st0 !== null) n++;
+      const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
       const no = +(T.find("[data-schedule_no]").first().attr("data-schedule_no") || 0) || null;
       put(yy, mm, dd, name, st, spc(T.find("#fish").first().text(), T.find(".fishspecies").first().text() + " " + T.find(".small_event").first().text()), no);
     });
@@ -151,7 +152,8 @@ async function scrapeTheFishing(host) {
         tds.eq(1).find('img[alt="낚시종류"]').each((_, i) => { kind = $(i).closest("tr").text(); });
         const rowText = tds.first().text() + " " + tds.eq(1).find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + tds.eq(1).text();
         // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
-        let st = stc(alt); if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds.eq(1).text())) st = null;
+        let st = stc(alt); if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds.eq(1).text())) st = "w";
+        if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
         put(yy, mm, dd, name, st, spc(kind, rowText));
         found++;
       });
@@ -235,7 +237,7 @@ for (const k of [...allKeys].sort()) {
       let of = "";
       nb.s.forEach((v, i) => {
         const was = po[i] === "1";
-        const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+        const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
         if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
         of += on ? "1" : "0";
       });

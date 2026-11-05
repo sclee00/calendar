@@ -15,7 +15,7 @@ const SITES = [
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 3;
+const PARSE_V = 4;
 const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
@@ -171,8 +171,9 @@ window.__fishParse = function (kind, html, y, m) {
       const name = norm(t.querySelector(".ship_info .title")?.textContent || "");
       const sd = t.querySelector("[data-sdate]")?.dataset.sdate; if (!name || !sd) return;
       const [yy, mo, dd] = sd.split("-").map(Number); if (mo !== m) return;
-      const st = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
-      if (st !== null) found++;
+      const st0 = stc((t.querySelector(".remain") || t.querySelector(".ship_info2") || {}).textContent);
+      if (st0 !== null) found++;
+      const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
       const no = +((t.querySelector(".btn_user_reservation, .btn_ship_reservation, [data-schedule_no]") || {}).dataset?.schedule_no || 0) || null;
       rows.push([dd, name, st, spc(t.querySelector("#fish")?.textContent, (t.querySelector(".fishspecies")?.textContent || "") + " " + (t.querySelector(".small_event")?.textContent || "")), no]);
     });
@@ -189,7 +190,8 @@ window.__fishParse = function (kind, html, y, m) {
       let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach(i => { kind2 = i.closest("tr").textContent; });
       const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map(i => i.alt || "").join(" ") + " " + tds[1].textContent;
       // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
-      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\\s*역|[가-힣]+항/.test(tds[1].textContent)) st = null;
+      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\\s*역|[가-힣]+항/.test(tds[1].textContent)) st = "w";
+      if (st === null) st = "w"; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
     });
   }
@@ -269,7 +271,7 @@ function merge(old, results, errors, sources, checked) {
         let of = "";
         nb.s.forEach((v, i) => {
           const was = po[i] === "1";
-          const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null)));
+          const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
           if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
           of += on ? "1" : "0";
         });
@@ -342,8 +344,9 @@ function regexParse(kind, html, y, m) {
       if (!name || !sd[0] || +sd[2] !== m) return;
       const rem = c.match(/class="remain"[\s\S]*?<\/li>/);
       const info = c.match(/class="ship_info2"[\s\S]*?<\/td>/);
-      const st = stc(strip(rem ? rem[0] : info ? info[0] : ""));
-      if (st !== null) found++;
+      const st0 = stc(strip(rem ? rem[0] : info ? info[0] : ""));
+      if (st0 !== null) found++;
+      const st = st0 === null ? "w" : st0; // 일정은 있지만 예약 불가(오픈예정 등) → "w"
       rows.push([+sd[3], name, st, spc(strip((c.match(/id="fish"[^>]*>([\s\S]*?)<\/div>/) || [])[1]), strip((c.match(/class="small_event"[\s\S]*?<\/li>/) || [""])[0]))]);
     });
   } else {
@@ -359,7 +362,8 @@ function regexParse(kind, html, y, m) {
         const alt = [...last.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(last);
         const kind2 = strip((seg.match(/alt="낚시종류"[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/) || [])[1]);
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
-        let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(strip(seg))) st = null; // 출조 버스: 장소 설명이 없으면 안 열린 것
+        let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(strip(seg))) st = "w"; // 출조 버스: 장소 설명이 없으면 안 열린 것
+        if (st === null) st = "w";
         rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText)]); found++;
       });
     }
@@ -469,7 +473,7 @@ function applyWatchRows(data, rows, monthKeys) {
     const before = b.s[i], v = h.s, pos = typeof v === "number" && v > 0;
     const wasR = String(M.reopen[h.name] || "")[i] === "1", wasO = String(M.opened[h.name] || "")[i] === "1";
     const onR = pos && (before === 0 || wasR);
-    const onO = pos && !onR && (wasO || (!first.has(h.ym) && before == null));
+    const onO = pos && !onR && (wasO || (!first.has(h.ym) && (before == null || before === "w")));
     if (onR && !wasR) fresh.reopened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
     if (onO && !wasO) fresh.opened.push(`${h.ym.slice(5)}/${pad(h.d)} ${h.name} ${v}석`);
     b.s[i] = v;
