@@ -11,11 +11,11 @@ const SITES = [
   { id: "dy", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
   { id: "khan", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
   { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
-  { id: "secret", kind: "tf", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
+  { id: "secret", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 2;
+const PARSE_V = 3;
 const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
@@ -188,9 +188,8 @@ window.__fishParse = function (kind, html, y, m) {
       const alt = [...last.querySelectorAll("img")].map(i => i.alt).join(" ") + " " + last.textContent;
       let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach(i => { kind2 = i.closest("tr").textContent; });
       const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map(i => i.alt || "").join(" ") + " " + tds[1].textContent;
-      // 예약하기 버튼은 있어도 출조 설명(낚시종류·안내)이 비어 있으면 아직 안 열린 것으로 본다
-      const noDesc = !tds[1].querySelector("img") && !tds[1].textContent.trim();
-      let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null;
+      // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
+      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\\s*역|[가-힣]+항/.test(tds[1].textContent)) st = null;
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
     });
   }
@@ -360,9 +359,7 @@ function regexParse(kind, html, y, m) {
         const alt = [...last.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(last);
         const kind2 = strip((seg.match(/alt="낚시종류"[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>/) || [])[1]);
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
-        const desc = cells.length > 2 ? cells[1] : "";
-        const noDesc = cells.length > 2 && !/<img/i.test(desc) && !strip(desc);
-        let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null; // 출조 설명이 없으면 안 열린 것
+        let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(strip(seg))) st = null; // 출조 버스: 장소 설명이 없으면 안 열린 것
         rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText)]); found++;
       });
     }

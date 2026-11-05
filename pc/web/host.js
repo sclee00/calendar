@@ -10,7 +10,7 @@
     { id: "dy", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
     { id: "khan", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
     { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
-    { id: "secret", kind: "tf", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
+    { id: "secret", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
   const KEEP = SITES.flatMap((s) => s.boats);
   const pad = (n) => String(n).padStart(2, "0");
@@ -87,9 +87,8 @@
         const alt = [...last.querySelectorAll("img")].map((i) => i.alt).join(" ") + " " + last.textContent;
         let kind2 = ""; tds[1].querySelectorAll('img[alt="낚시종류"]').forEach((i) => { kind2 = i.closest("tr").textContent; });
         const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map((i) => i.alt || "").join(" ") + " " + tds[1].textContent;
-        // 예약하기 버튼은 있어도 출조 설명(낚시종류·안내)이 비어 있으면 아직 안 열린 것으로 본다
-      const noDesc = !tds[1].querySelector("img") && !tds[1].textContent.trim();
-      let st = stc(alt); if (noDesc && typeof st === "number" && st > 0) st = null;
+        // 출조 버스만: 자리가 있어도 출조 설명에 장소(지역·○○항)가 없으면 아직 안 열린 것으로 본다
+      let st = stc(alt); if (kind === "bus" && typeof st === "number" && st > 0 && !/지\s*역|[가-힣]+항/.test(tds[1].textContent)) st = null;
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
       });
     }
@@ -116,7 +115,7 @@
       } else {
         let found = 0;
         for (let d = 1; d <= daysIn(y, m); d += site.step || 4) {
-          const res = parse("tf", await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
+          const res = parse(site.kind, await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
           res.rows.forEach(([dd, n, s, sp]) => put(y, m, dd, n, s, sp));
           found += res.found;
         }
