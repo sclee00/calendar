@@ -152,6 +152,8 @@ async function scrapeTheFishing(host) {
         const rowText = tds.first().text() + " " + tds.eq(1).find("img").map((_, i) => $(i).attr("alt") || "").get().join(" ") + " " + tds.eq(1).text();
         // 출조 버스만: 장소·일정 안내는 있는데 예약창이 아직 안 열린(상태 칸이 빈) 일정 → "w"(점선 아이콘)
         let st = stc(alt); if (st === null && host.startsWith("secretbus.") && tds.eq(1).text().trim()) st = "w";
+        // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
+        if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !tds.eq(1).text().trim() && !tds.eq(1).find("img").length) st = null;
         put(yy, mm, dd, name, st, spc(kind, rowText));
         found++;
       });

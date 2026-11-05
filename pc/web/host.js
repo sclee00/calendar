@@ -89,6 +89,8 @@
         const rowText = tds[0].textContent + " " + [...tds[1].querySelectorAll("img")].map((i) => i.alt || "").join(" ") + " " + tds[1].textContent;
         // 출조 버스만: 장소·일정 안내는 있는데 예약창이 아직 안 열린(상태 칸이 빈) 일정 → "w"(점선 아이콘)
       let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
+      // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
+      if (kind === "bus" && typeof st === "number" && st > 0 && !tds[1].textContent.trim() && !tds[1].querySelector("img")) st = null;
       rows.push([dd, name, st, spc(kind2, rowText)]); found++;
       });
     }
