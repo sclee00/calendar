@@ -13,6 +13,7 @@
     { id: "secret", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
   const KEEP = SITES.flatMap((s) => s.boats);
+  const PARSE_V = 8; // 읽는 규칙이 바뀌면 올림
   const pad = (n) => String(n).padStart(2, "0");
   const daysIn = (y, m) => new Date(y, m, 0).getDate();
   const ymKey = (y, m) => `${y}-${pad(m)}`;
@@ -175,7 +176,7 @@
       // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
       if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened }; else delete months[k];
     }
-    return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
+    return { updatedAt: kstIso(), pv: PARSE_V, ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
   }
 
 // ── 선사 공지사항: 앱을 열 때 확인해서 새 공지가 있으면 알림 (처음 한 번은 지금 공지만 기억) ──
@@ -260,6 +261,13 @@ async function checkNotices(parse, getText, state) {
 
   // ── 캘린더 확인 ──
   let old = window.__seatsData || { months: {} };
+  // 규칙이 바뀐 뒤 처음이면 출조 버스의 예전 결과는 버린다
+  if (old.pv !== PARSE_V) {
+    const bus = SITES.filter((s) => s.kind === "bus").flatMap((s) => s.boats);
+    for (const M of Object.values(old.months || {})) for (const n of bus) { if (M.boats) delete M.boats[n]; if (M.reopen) delete M.reopen[n]; if (M.opened) delete M.opened[n]; }
+    window.__seatsData = old;
+    try { __applySeats(old); } catch (e) {}
+  }
   let settings = window.__settings || {};
   const okAhead = (n) => Number.isInteger(n) && n >= 1 && n <= 12;
   let ahead = okAhead(settings.ahead) ? settings.ahead : 1;

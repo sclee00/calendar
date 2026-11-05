@@ -15,7 +15,19 @@ const SITES = [
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 7;
+const PARSE_V = 8;
+// 읽는 규칙이 바뀐 뒤 처음이면, 출조 버스는 예전 규칙으로 받아 둔 결과를 버린다 (새로 확인할 때까지 옛 아이콘이 남지 않게)
+function dropStale(d) {
+  if (!d || d.pv === PARSE_V) return d;
+  const bus = SITES.filter((s) => s.kind === "bus").flatMap((s) => s.boats);
+  for (const M of Object.values(d.months || {})) for (const n of bus) {
+    if (M.boats) delete M.boats[n];
+    if (M.reopen) delete M.reopen[n];
+    if (M.opened) delete M.opened[n];
+  }
+  return d;
+}
+
 const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
@@ -592,6 +604,7 @@ async function backgroundCheck() {
   let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
+  old = dropStale(old);
   const parser = await makeParser();
   const results = {}, errors = [], sources = { ...(old.sources || {}) };
   await Promise.all(SITES.map(async (site) => {
@@ -690,6 +703,7 @@ async function main(wv, say) {
   let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
   const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
+  old = dropStale(old);
   const settings = loadSettings();
   const okAhead = (n) => Number.isInteger(n) && n >= 1 && n <= 12;
   let ahead = okAhead(settings.ahead) ? settings.ahead : 1; // 처음 열 때 확인할 기간(기본 1개월, 설정에서 1~12개월)
