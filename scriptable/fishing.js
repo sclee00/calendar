@@ -14,6 +14,8 @@ const SITES = [
   { id: "secret", kind: "tf", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
+// 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
+const PARSE_V = 2;
 const GAP = 300; // 한 사이트 안에서 요청 사이 간격(ms). 사이트마다 요청은 하나씩만 보낸다
 const TOKEN_KEY = "fishing_github_token";
 const ASKED_KEY = "fishing_github_asked";
@@ -278,7 +280,7 @@ function merge(old, results, errors, sources, checked) {
     // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
     if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened }; else delete months[k];
   }
-  return { updatedAt: kstIso(), ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
+  return { updatedAt: kstIso(), pv: PARSE_V, ok: errors.length === 0, errors, reopened, opened: newlyOpened, sources, months };
 }
 
 async function loadJSON(url) {
@@ -454,7 +456,16 @@ function applyWatchRows(data, rows, monthKeys) {
   const fresh = { reopened: [], opened: [] };
   for (const h of rows) {
     const M = out.months[h.ym];
-    if (!M || h.s === null || h.s === undefined) continue;
+    if (!M) continue;
+    if (h.s === null || h.s === undefined) { // 목록엔 있지만 안 열린 일정(출조 설명 없음·오픈예정): 전에 받은 자리 정보를 지운다
+      const ob = M.boats && M.boats[h.name];
+      if (ob && ob.s && ob.s[h.d - 1] != null && ob.s[h.d - 1] !== "x") {
+        ob.s[h.d - 1] = null;
+        const L0 = daysIn(h.y, h.m);
+        ["reopen", "opened"].forEach((F) => { if (M[F] && M[F][h.name]) setFlag(M[F], h.name, h.d - 1, L0, false); });
+      }
+      continue;
+    }
     M.boats = M.boats || {}; M.reopen = M.reopen || {}; M.opened = M.opened || {};
     const L = daysIn(h.y, h.m), i = h.d - 1;
     const b = M.boats[h.name] || (M.boats[h.name] = { s: Array(L).fill(null), sp: "j".repeat(L) });
@@ -876,7 +887,7 @@ async function main(wv, say) {
   // 앱을 닫아 둔 동안(자동화) 최근 30분 안에 확인했으면 열 때 다시 확인하지 않는다
   let cached = null; try { cached = JSON.parse(fm.readString(CACHE)); } catch (e) {}
   const age = Date.now() - Date.parse((cached && cached.updatedAt) || 0);
-  if (age < 30 * 60e3 && first.every(([y, m]) => old.months && ymKey(y, m) in old.months)) {
+  if (cached && cached.pv === PARSE_V && age < 30 * 60e3 && first.every(([y, m]) => old.months && ymKey(y, m) in old.months)) {
     first.forEach(([y, m]) => checked.add(ymKey(y, m)));
     await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, ${JSON.stringify("최근 확인 결과입니다. 새로 확인하려면 '지금 확인'을 누르세요.")})`);
   } else want(first);

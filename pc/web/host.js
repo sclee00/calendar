@@ -426,7 +426,16 @@ function applyWatchRows(data, rows, monthKeys) {
   const fresh = { reopened: [], opened: [] };
   for (const h of rows) {
     const M = out.months[h.ym];
-    if (!M || h.s === null || h.s === undefined) continue;
+    if (!M) continue;
+    if (h.s === null || h.s === undefined) { // 목록엔 있지만 안 열린 일정(출조 설명 없음·오픈예정): 전에 받은 자리 정보를 지운다
+      const ob = M.boats && M.boats[h.name];
+      if (ob && ob.s && ob.s[h.d - 1] != null && ob.s[h.d - 1] !== "x") {
+        ob.s[h.d - 1] = null;
+        const L0 = daysIn(h.y, h.m);
+        ["reopen", "opened"].forEach((F) => { if (M[F] && M[F][h.name]) setFlag(M[F], h.name, h.d - 1, L0, false); });
+      }
+      continue;
+    }
     M.boats = M.boats || {}; M.reopen = M.reopen || {}; M.opened = M.opened || {};
     const L = daysIn(h.y, h.m), i = h.d - 1;
     const b = M.boats[h.name] || (M.boats[h.name] = { s: Array(L).fill(null), sp: "j".repeat(L) });
