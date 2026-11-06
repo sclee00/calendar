@@ -13,7 +13,7 @@
     { id: "secret", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
   const KEEP = SITES.flatMap((s) => s.boats);
-  const PARSE_V = 8; // 읽는 규칙이 바뀌면 올림
+  const PARSE_V = 9; // 읽는 규칙이 바뀌면 올림
   const pad = (n) => String(n).padStart(2, "0");
   const daysIn = (y, m) => new Date(y, m, 0).getDate();
   const ymKey = (y, m) => `${y}-${pad(m)}`;
@@ -44,6 +44,18 @@
   }
 
   // ── 분석 (아이폰 버전과 같은 규칙) ──
+  function fishLabel(t) {
+    // 출조 설명에서 어종 이름만 뽑는다 (시크릿 버스용). 긴 이름 우선(돌문어 > 문어, 갑오징어 > 오징어)
+    var L = ["돌문어", "문어", "갑오징어", "주꾸미", "쭈꾸미", "한치", "오징어", "쥐노래미", "노래미", "열기", "우럭", "광어", "참돔", "감성돔", "돌돔", "벵에돔", "농어", "민어", "삼치", "방어", "부시리", "대구", "볼락", "갈치", "백조기", "조기", "도다리", "가자미", "고등어", "전갱이", "쏨뱅이", "장대"];
+    t = String(t || "");
+    var hits = [];
+    L.forEach(function (w) { var i = t.indexOf(w); while (i >= 0) { hits.push([i, i + w.length, w]); i = t.indexOf(w, i + 1); } });
+    hits = hits.filter(function (a) { return !hits.some(function (b) { return b !== a && b[0] <= a[0] && b[1] >= a[1] && b[2].length > a[2].length; }); });
+    hits.sort(function (a, b) { return a[0] - b[0]; });
+    var out = [];
+    hits.forEach(function (h) { var w = h[2] === "쭈꾸미" ? "주꾸미" : h[2]; if (out.indexOf(w) < 0) out.push(w); });
+    return out.slice(0, 4).join("·");
+  }
   function classifySpecies(primary, fallback) {
     const FISH = /광어|우럭|농어|민어|참돔|도미|타이라바|백조기|조기|삼치|부시리|방어|대구|열기|볼락|노래미|놀래미|우럭광어|광우|우광|외수질|다운샷|지깅|라이트지깅|침선|생미끼|선상낚시|원투|흘림|외줄/;
     const CEPH = /주꾸미|쭈꾸미|쭈구미|쭈갑|갑쭈|쭈\.갑|갑\.쭈|갑오징어|갑오|문어|한치|오징어|에기|쭈낚/;
@@ -92,7 +104,7 @@
       let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
       // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
       if (kind === "bus" && typeof st === "number" && st > 0 && !tds[1].textContent.trim() && !tds[1].querySelector("img")) st = null;
-      rows.push([dd, name, st, spc(kind2, rowText)]); found++;
+      rows.push([dd, name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : ""]); found++;
       });
     }
     return { rows, found };
@@ -100,13 +112,14 @@
 
   async function scrapeSite(site, monthList, progress) {
     const out = {};
-    const put = (y, m, d, name, s, sp, no) => {
+    const put = (y, m, d, name, s, sp, no, fn) => {
       if (!name || s === null) return;
       const k = ymKey(y, m), L = daysIn(y, m);
       out[k] = out[k] || {};
       const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
       b.s[d - 1] = s; b.sp[d - 1] = sp;
       if (no) { b.no = b.no || Array(L).fill(null); b.no[d - 1] = no; }
+      if (fn) { b.fn = b.fn || Array(L).fill(""); b.fn[d - 1] = fn; } // 시크릿 버스: 설명에서 뽑은 어종 이름
     };
     let seen = false;
     for (const [y, m] of monthList) {
@@ -119,7 +132,7 @@
         let found = 0;
         for (let d = 1; d <= daysIn(y, m); d += site.step || 4) {
           const res = parse(site.kind, await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
-          res.rows.forEach(([dd, n, s, sp]) => put(y, m, dd, n, s, sp));
+          res.rows.forEach(([dd, n, s, sp, , fn]) => put(y, m, dd, n, s, sp, null, fn));
           found += res.found;
         }
         if (found) seen = true; else if (seen) break;

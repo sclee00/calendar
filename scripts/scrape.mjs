@@ -20,6 +20,18 @@ const norm = (s) => {
   s = squash(s).replace(/\(.*$/, "");
   return KEEP.find((k) => s === squash(k) || s.startsWith(squash(k))) || null;
 };
+function fishLabel(t) {
+  // 출조 설명에서 어종 이름만 뽑는다 (시크릿 버스용). 긴 이름 우선(돌문어 > 문어, 갑오징어 > 오징어)
+  var L = ["돌문어", "문어", "갑오징어", "주꾸미", "쭈꾸미", "한치", "오징어", "쥐노래미", "노래미", "열기", "우럭", "광어", "참돔", "감성돔", "돌돔", "벵에돔", "농어", "민어", "삼치", "방어", "부시리", "대구", "볼락", "갈치", "백조기", "조기", "도다리", "가자미", "고등어", "전갱이", "쏨뱅이", "장대"];
+  t = String(t || "");
+  var hits = [];
+  L.forEach(function (w) { var i = t.indexOf(w); while (i >= 0) { hits.push([i, i + w.length, w]); i = t.indexOf(w, i + 1); } });
+  hits = hits.filter(function (a) { return !hits.some(function (b) { return b !== a && b[0] <= a[0] && b[1] >= a[1] && b[2].length > a[2].length; }); });
+  hits.sort(function (a, b) { return a[0] - b[0]; });
+  var out = [];
+  hits.forEach(function (h) { var w = h[2] === "쭈꾸미" ? "주꾸미" : h[2]; if (out.indexOf(w) < 0) out.push(w); });
+  return out.slice(0, 4).join("·");
+}
 function classifySpecies(primary, fallback) {
   // 어종 분류: f = 물고기(광어·우럭 등), j = 주꾸미·갑오징어 등 두족류, u = 어종 미표기
   // primary(어종 칸)를 먼저 보고, 비어 있거나 모르는 말이면 fallback(공지·행 글자)에서 찾는다. 둘 다 없으면 추측하지 않고 u.
@@ -81,7 +93,7 @@ async function get(url) {
 
 function collector() {
   const out = {};
-  const put = (y, m, d, name, s, sp, no) => {
+  const put = (y, m, d, name, s, sp, no, fn) => {
     if (!name || s === null) return;
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] ??= {};
@@ -89,6 +101,7 @@ function collector() {
     b.s[d - 1] = s;
     b.sp[d - 1] = sp;
     if (no) { b.no ??= Array(L).fill(null); b.no[d - 1] = no; }
+    if (fn) { b.fn ??= Array(L).fill(""); b.fn[d - 1] = fn; } // 시크릿 버스: 설명에서 뽑은 어종 이름
   };
   const done = () => {
     for (const k in out) for (const n in out[k]) out[k][n].sp = out[k][n].sp.join("");
@@ -154,7 +167,7 @@ async function scrapeTheFishing(host) {
         let st = stc(alt); if (st === null && host.startsWith("secretbus.") && tds.eq(1).text().trim()) st = "w";
         // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
         if (host.startsWith("secretbus.") && typeof st === "number" && st > 0 && !tds.eq(1).text().trim() && !tds.eq(1).find("img").length) st = null;
-        put(yy, mm, dd, name, st, spc(kind, rowText));
+        put(yy, mm, dd, name, st, spc(kind, rowText), null, host.startsWith("secretbus.") ? fishLabel(kind || tds.eq(1).text()) : "");
         found++;
       });
     }

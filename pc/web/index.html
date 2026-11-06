@@ -325,7 +325,9 @@ const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
 const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{},O=(st.seats[mk]&&st.seats[mk].opened)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]),k=`${mk}|${b.name}|${d}`;
   const re=s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(k),nw=!re&&s==="open"&&String(O[b.name]||"")[d-1]==="1"&&!ACK.has(k);
-  return{b,s,re,nw,sp:spOf((B.sp||"")[d-1])}}).filter(r=>r.s&&st.sp.has(r.sp))};
+  return{b,s,re,nw,sp:spOf((B.sp||"")[d-1]),fn:(B.fn||[])[d-1]||""}}).filter(r=>r.s&&st.sp.has(r.sp))};
+// 시크릿 버스는 출조 설명에서 뽑은 어종 이름을, 나머지는 어종 분류를 보여 준다
+const spText=r=>r.fn||SP[r.sp];
 const flagCls=r=>r.re?" reopen":r.nw?" fresh":"";
 const flagTxt=r=>r.re?"취소로 다시 열림":r.nw?"새로 열린 예약":"";
 
@@ -385,7 +387,7 @@ function grid(){
     let rows=cellRows(mk,d);
     let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div><div class="tiles">`;
     if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
-    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${SP[r.sp]} · ${flagTxt(r)||LBL[r.s]}`)});
+    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`)});
     el.innerHTML=h+"</div>";el.onclick=()=>{st.day=d;render()};g.append(el);
   }
   const tail=(7-(first+last)%7)%7;
@@ -398,7 +400,7 @@ function panel(){
   const MB=monthBoats(mk);
   const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
-  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${SP[sp]} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
+  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${spText(r)} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
     :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   document.getElementById("panel").innerHTML=h;
 }

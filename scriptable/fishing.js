@@ -15,7 +15,7 @@ const SITES = [
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 8;
+const PARSE_V = 9;
 // 읽는 규칙이 바뀐 뒤 처음이면, 출조 버스는 예전 규칙으로 받아 둔 결과를 버린다 (새로 확인할 때까지 옛 아이콘이 남지 않게)
 function dropStale(d) {
   if (!d || d.pv === PARSE_V) return d;
@@ -68,6 +68,18 @@ async function get(url) {
 }
 
 // WebView(WebKit) 안에서 DOMParser로 HTML을 읽는 함수. 브라우저용 수집 코드와 같은 규칙.
+function fishLabel(t) {
+  // 출조 설명에서 어종 이름만 뽑는다 (시크릿 버스용). 긴 이름 우선(돌문어 > 문어, 갑오징어 > 오징어)
+  var L = ["돌문어", "문어", "갑오징어", "주꾸미", "쭈꾸미", "한치", "오징어", "쥐노래미", "노래미", "열기", "우럭", "광어", "참돔", "감성돔", "돌돔", "벵에돔", "농어", "민어", "삼치", "방어", "부시리", "대구", "볼락", "갈치", "백조기", "조기", "도다리", "가자미", "고등어", "전갱이", "쏨뱅이", "장대"];
+  t = String(t || "");
+  var hits = [];
+  L.forEach(function (w) { var i = t.indexOf(w); while (i >= 0) { hits.push([i, i + w.length, w]); i = t.indexOf(w, i + 1); } });
+  hits = hits.filter(function (a) { return !hits.some(function (b) { return b !== a && b[0] <= a[0] && b[1] >= a[1] && b[2].length > a[2].length; }); });
+  hits.sort(function (a, b) { return a[0] - b[0]; });
+  var out = [];
+  hits.forEach(function (h) { var w = h[2] === "쭈꾸미" ? "주꾸미" : h[2]; if (out.indexOf(w) < 0) out.push(w); });
+  return out.slice(0, 4).join("·");
+}
 function classifySpecies(primary, fallback) {
   // 어종 분류: f = 물고기(광어·우럭 등), j = 주꾸미·갑오징어 등 두족류, u = 어종 미표기
   // primary(어종 칸)를 먼저 보고, 비어 있거나 모르는 말이면 fallback(공지·행 글자)에서 찾는다. 둘 다 없으면 추측하지 않고 u.
@@ -174,6 +186,7 @@ window.__fishParse = function (kind, html, y, m) {
   const KEEP = ${JSON.stringify(KEEP)};
   const sq = s => (s || "").replace(/\\s+/g, "");
   const norm = s => { s = sq(s).replace(/\\(.*$/, ""); return KEEP.find(k => s === sq(k) || s.startsWith(sq(k))) || null; };
+  const fishLabel = ${fishLabel.toString()};
   const spc = ${classifySpecies.toString()};
   const stc = t => { t = sq(t); const mm = t.match(/남은자리(\\d+)/); if (mm) return +mm[1]; if (/예약마감|예약완료|마감/.test(t)) return 0; if (/기상|취소|점검|휴무|휴항/.test(t)) return "x"; return null; };
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -204,7 +217,7 @@ window.__fishParse = function (kind, html, y, m) {
       let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
       // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
       if (kind === "bus" && typeof st === "number" && st > 0 && !tds[1].textContent.trim() && !tds[1].querySelector("img")) st = null;
-      rows.push([dd, name, st, spc(kind2, rowText)]); found++;
+      rows.push([dd, name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : ""]); found++;
     });
   }
   return { rows, found };
@@ -213,13 +226,14 @@ true;`;
 
 async function scrapeSite(parser, site, monthList, progress) {
   const out = {};
-  const put = (y, m, d, name, s, sp, no) => {
+  const put = (y, m, d, name, s, sp, no, fn) => {
     if (!name || s === null) return;
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] = out[k] || {};
     const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
     b.s[d - 1] = s; b.sp[d - 1] = sp;
     if (no) { b.no = b.no || Array(L).fill(null); b.no[d - 1] = no; }
+    if (fn) { b.fn = b.fn || Array(L).fill(""); b.fn[d - 1] = fn; } // 시크릿 버스: 설명에서 뽑은 어종 이름
   };
   const parse = (html, y, m) => parser(site.kind, html, y, m);
   let seen = false;
@@ -233,7 +247,7 @@ async function scrapeSite(parser, site, monthList, progress) {
       let found = 0;
       for (let d = 1; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
         const res = await parse(await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
-        res.rows.forEach(([dd, n, s, sp]) => put(y, m, dd, n, s, sp));
+        res.rows.forEach(([dd, n, s, sp, , fn]) => put(y, m, dd, n, s, sp, null, fn));
         found += res.found;
       }
       if (found) seen = true; else if (seen) break;
@@ -375,7 +389,7 @@ function regexParse(kind, html, y, m) {
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
         let st = stc(alt); if (st === null && kind === "bus" && /지\s*역|[가-힣]+항|★/.test(strip(seg))) st = "w"; // 출조 버스: 장소·일정 안내는 있는데 예약창 안 열림
         if (kind === "bus" && typeof st === "number" && st > 0 && cells.length > 2 && !strip(cells[1]) && !/<img/i.test(cells[1]) && !/지\s*역|[가-힣]+항|★/.test(strip(seg))) st = null; // 출조 버스: 자리만 열리고 설명 없음 → 표시 안 함
-        rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText)]); found++;
+        rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || strip(seg)) : ""]); found++;
       });
     }
   }
