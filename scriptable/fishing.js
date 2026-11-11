@@ -611,6 +611,77 @@ async function watch() {
 // ───────────────── 앱을 열지 않고 확인 (단축어 '개인용 자동화'로 정해 둔 시각에 실행) ─────────────────
 // 설정한 기간(1~12개월)을 확인해 결과를 저장하고(앱을 열면 바로 보임), 웹 캘린더에도 올린다.
 // 빈자리 알림을 켜 두었으면 그 조건으로 알리고, 꺼 두었으면 새로 생긴 자리(취소로 다시 열림·새로 열림)를 알린다.
+
+// ───────────────── 내 예약 ─────────────────
+// 키 형식 "YYYY-MM|배 이름|일". 직접 표시한 것(settings.mine) + 아이폰 캘린더에서 읽은 것
+const MINE_TAG = (k) => `[fishing:${k}]`;
+const keyDate = (k) => { const [mk, , d] = k.split("|"); return new Date(+mk.slice(0, 4), +mk.slice(5) - 1, +d); };
+async function calFind(k) {
+  const s0 = keyDate(k), e0 = new Date(s0.getTime() + 864e5);
+  const evs = await CalendarEvent.between(s0, e0);
+  return evs.find((x) => (x.notes || "").includes(MINE_TAG(k)));
+}
+async function calAdd(k) {
+  try {
+    if (await calFind(k)) return;
+    const [, name] = k.split("|");
+    const e = new CalendarEvent();
+    e.title = `🎣 ${name} 출조`;
+    e.isAllDay = true;
+    e.startDate = keyDate(k); e.endDate = keyDate(k);
+    e.notes = `낚시배 빈자리 앱에서 추가 ${MINE_TAG(k)}`;
+    try { e.calendar = await Calendar.defaultForEvents(); } catch (x) {}
+    await e.save();
+  } catch (e) { console.error(e); }
+}
+async function calRemove(k) { try { const ev = await calFind(k); if (ev) await ev.remove(); } catch (e) { console.error(e); } }
+// 아이폰 캘린더에서 배 이름이 들어간 일정 → 내 예약 (앱이 직접 넣은 일정은 제외)
+async function calRead() {
+  try {
+    const now = new Date(), s0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const evs = await CalendarEvent.between(s0, new Date(s0.getTime() + 400 * 864e5));
+    const sq = (t) => String(t || "").replace(/\s+/g, "");
+    const out = new Set();
+    for (const ev of evs) {
+      if ((ev.notes || "").includes("[fishing:")) continue;
+      const t = sq(ev.title);
+      const name = KEEP.slice().sort((a, b) => sq(b).length - sq(a).length).find((n) => t.includes(sq(n)));
+      if (!name) continue;
+      const d = ev.startDate;
+      out.add(`${d.getFullYear()}-${pad(d.getMonth() + 1)}|${name}|${d.getDate()}`);
+    }
+    return [...out];
+  } catch (e) { return []; }
+}
+function mineKeys(settings, calKeys) { return [...new Set([...(settings.mine || []), ...(calKeys || settings.mineCalKeys || [])])]; }
+// 내 예약 배가 이번 확인에서 '출조 취소'로 바뀐 것
+function mineCancelled(oldData, newData, keys) {
+  const st = (d, k) => { const [mk, name, day] = k.split("|"); const b = d && d.months && d.months[mk] && d.months[mk].boats && d.months[mk].boats[name]; return b ? b.s[+day - 1] : undefined; };
+  return keys.filter((k) => st(newData, k) === "x" && st(oldData, k) !== "x");
+}
+const mineText = (k) => { const [mk, name, d] = k.split("|"); const dt = keyDate(k); return `${+mk.slice(5)}/${d}(${"일월화수목금토"[dt.getDay()]}) ${name}`; };
+async function notifyMine(cancelled, settings) {
+  for (const k of cancelled) {
+    const n = new Notification();
+    n.title = "내 예약 출조 취소"; n.body = mineText(k) + " — 사이트에서 확인하세요"; n.sound = "default";
+    n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+    await n.schedule();
+  }
+  // 출조 전날 알림 (하루 한 번)
+  const t = new Date(Date.now() + 9 * 3600e3), tm = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + 1));
+  const tk = `${tm.getUTCFullYear()}-${pad(tm.getUTCMonth() + 1)}|`, td = tm.getUTCDate();
+  const done = settings.mineReminded || {};
+  const due = mineKeys(settings).filter((k) => k.startsWith(tk) && +k.split("|")[2] === td && !done[k]);
+  for (const k of due) {
+    const n = new Notification();
+    n.title = "내일 출조"; n.body = mineText(k) + " · 준비물·날씨 확인하세요"; n.sound = "default";
+    n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
+    await n.schedule();
+    done[k] = 1;
+  }
+  if (due.length) saveSettings({ ...loadSettings(), mineReminded: done });
+}
+
 async function backgroundCheck() {
   const settings = loadSettings();
   const ahead = Number.isInteger(settings.ahead) && settings.ahead >= 1 && settings.ahead <= 12 ? settings.ahead : 1;
@@ -626,6 +697,7 @@ async function backgroundCheck() {
     catch (e) { errors.push(`${site.host}: ${e.message}`); }
   }));
   const data = merge(old, results, errors, sources, list.map(([y, m]) => ymKey(y, m)));
+  try { await notifyMine(mineCancelled(old, data, mineKeys(settings)), settings); } catch (e) {}
   fm.writeString(CACHE, JSON.stringify(data));
   try { await upload(data); } catch (e) {}
   let out = `${list.map(([, m]) => m + "월").join("·")} 확인` + (errors.length ? ` (일부 실패 ${errors.length}곳)` : "");
@@ -728,7 +800,10 @@ async function main(wv, say) {
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};</script>`;
+  // 아이폰 캘린더에서 내 예약 읽기 (켜 두었을 때)
+  let calKeys = [];
+  if (settings.mineCal && settings.mineCal.read) { calKeys = await calRead(); saveSettings({ ...loadSettings(), mineCalKeys: calKeys }); }
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -758,6 +833,7 @@ async function main(wv, say) {
       }
     }));
     const data = merge(old, results, errors, sources, keys);
+    try { await notifyMine(mineCancelled(old, data, mineKeys(loadSettings())), loadSettings()); } catch (e) {}
     fm.writeString(CACHE, JSON.stringify(data));
     old = data;
     await js(`__applySeats(${JSON.stringify(data)})`);
@@ -859,6 +935,27 @@ async function main(wv, say) {
         const more = first.filter(([y, m]) => !checked.has(ymKey(y, m))); // 늘린 만큼만 바로 확인
         if (more.length) want(more);
       }
+      return false;
+    }
+    if (u.startsWith("fishing://mine?")) { // 내 예약 표시/해제
+      try {
+        const q = (n) => decodeURIComponent((new RegExp("[?&]" + n + "=([^&]*)").exec(u) || [])[1] || "");
+        const list = JSON.parse(q("list") || "[]"), key = q("key"), on = q("on") === "1";
+        const cur = loadSettings();
+        saveSettings({ ...cur, mine: list });
+        if (key && cur.mineCal && cur.mineCal.add) (on ? calAdd(key) : calRemove(key)).then(() => js(`__setChecking(false, ${JSON.stringify(on ? "내 예약으로 표시하고 아이폰 캘린더에 추가했어요." : "내 예약을 해제하고 캘린더 일정도 지웠어요.")})`));
+      } catch (e) {}
+      return false;
+    }
+    if (u.startsWith("fishing://minecal")) { // 아이폰 캘린더 연동 켜기/끄기
+      const add = /add=1/.test(u), read = /read=1/.test(u), cur = loadSettings();
+      saveSettings({ ...cur, mineCal: { add, read } });
+      (async () => {
+        if (add && !(cur.mineCal && cur.mineCal.add)) for (const k of cur.mine || []) await calAdd(k);
+        let ck = [];
+        if (read) { ck = await calRead(); saveSettings({ ...loadSettings(), mineCalKeys: ck }); }
+        await js(`__setChecking(false, ${JSON.stringify((add ? "내 예약을 아이폰 캘린더에 추가해요. " : "") + (read ? `캘린더에서 내 예약 ${ck.length}건을 찾았어요. 앱을 다시 열면 표시돼요.` : ""))})`);
+      })();
       return false;
     }
     if (u.startsWith("fishing://watch")) { // 빈자리 알림 설정 저장

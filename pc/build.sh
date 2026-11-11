@@ -7,7 +7,7 @@ import re
 s = open("../index.html", encoding="utf-8").read()
 # 아이폰 앱의 fishing:// 주소 이동 → PC 본체(host.js) 호출
 s, n = re.subn(r'location\.href=("fishing://[^;}]*?)(?=[;}])', r'window.__host(\1)', s)
-assert n == 5, n
+assert n == 7, n
 s = s.replace("앱을 닫아 둔 동안에도 확인하려면 단축어 앱의 '자동화'에 이 스크립트를 정해 둔 시각마다 실행하도록 넣어 두세요(그때는 이 간격 대신 자동화 시각에 확인). 홈 화면에 Scriptable 위젯을 두면 iOS가 위젯을 새로 고칠 때도 확인해요.",
               "PC 버전은 이 캘린더 탭이 열려 있는 동안만 정해 둔 간격으로 확인하고, 조건에 맞는 자리가 생기면 데스크톱 알림을 띄워요. 처음 켤 때 브라우저가 알림 허용을 물으면 '허용'을 누르세요.")
 s = s.replace("'지금 확인'을 누르면 아이폰의 Scriptable 앱이 열리면서 아이폰이 직접 네 선사 예약 화면을 한 번 읽어 옵니다(컴퓨터·Claude 필요 없음).",

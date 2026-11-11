@@ -307,6 +307,14 @@ async function checkNotices(parse, getText, state) {
       __applySeats(merge(old, results, [], sources, keys));
     }));
     const data = merge(old, results, errors, sources, keys);
+    // 내 예약 배가 '출조 취소'로 바뀌면 알림
+    try {
+      const sv = (d, k) => { const [mk, name, day] = k.split("|"); const b = d && d.months && d.months[mk] && d.months[mk].boats && d.months[mk].boats[name]; return b ? b.s[+day - 1] : undefined; };
+      (settings.mine || []).filter((k) => sv(data, k) === "x" && sv(old, k) !== "x").forEach((k) => {
+        const [mk, name, day] = k.split("|");
+        if ("Notification" in window && Notification.permission === "granted") new Notification("내 예약 출조 취소", { body: `${+mk.slice(5)}/${day} ${name} — 사이트에서 확인하세요`, requireInteraction: true });
+      });
+    } catch (e) {}
     old = data;
     await store.put("seats", data);
     __applySeats(data);
@@ -353,6 +361,11 @@ async function checkNotices(parse, getText, state) {
           if (cfg.on) setTimeout(runWatch, 1500);
           __setChecking(false, cfg.on ? `빈자리 알림을 켰어요. 이 탭이 열려 있는 동안 ${cfg.interval >= 60 ? cfg.interval / 60 + "시간" : cfg.interval + "분"}마다 확인합니다.` : "빈자리 알림을 껐어요.");
         }
+      } catch (e) {}
+    } else if (u.startsWith("fishing://mine?")) { // 내 예약 표시/해제
+      try {
+        const list = JSON.parse(decodeURIComponent((/[?&]list=([^&]*)/.exec(u) || [])[1] || "[]"));
+        settings = { ...settings, mine: list }; store.put("settings", settings);
       } catch (e) {}
     } else if (u.startsWith("fishing://testnote")) { // 미리보기: 실제 PC 알림 모양 보기
       let lines = [];
@@ -585,6 +598,15 @@ function watchMessage(fresh) {
   window.__checked = [];
   want(first);
   startWatch();
+  // 내 예약: 출조 전날이면 알림 (하루 한 번)
+  (async () => {
+    const t = new Date(Date.now() + 9 * 3600e3), tm = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + 1));
+    const pre = `${tm.getUTCFullYear()}-${pad(tm.getUTCMonth() + 1)}|`, td = tm.getUTCDate(), done = settings.mineReminded || {};
+    const due = (settings.mine || []).filter((k) => k.startsWith(pre) && +k.split("|")[2] === td && !done[k]);
+    if (!due.length || !("Notification" in window) || Notification.permission !== "granted") return;
+    due.forEach((k) => { const [, name] = k.split("|"); new Notification("내일 출조", { body: `${tm.getUTCMonth() + 1}/${td} ${name} · 준비물·날씨 확인하세요` }); done[k] = 1; });
+    settings = { ...settings, mineReminded: done }; store.put("settings", settings);
+  })();
   // 시작할 때 알림 조건(캘린더 확인이 끝난 뒤), 그다음 선사 공지사항 확인
   (async () => {
     await runWatch();

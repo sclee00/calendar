@@ -36,6 +36,18 @@
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);line-height:1.45}
 .wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:12px}
+.mycard{margin:10px 0 4px;border-radius:14px;padding:10px 12px;background:#fff7d6;border:2px solid #f5b301;color:#4a3a00;display:grid;gap:6px}
+.mycard[hidden]{display:none!important}
+.mycard b{font-size:15px}
+.mycard .mi{display:flex;flex-wrap:wrap;gap:6px}
+.mycard button{font:inherit;font-size:13px;font-weight:700;border:1.5px solid #f5b301;border-radius:999px;padding:4px 11px;background:#fff;color:#4a3a00;cursor:pointer}
+.mycard button.cx{border-color:#e0473a;color:#fff;background:#e0473a}
+.mycard small{font-size:11.5px;opacity:.8}
+.t.mine{position:relative;border-radius:7px;box-shadow:0 0 0 2.5px #f5b301}
+.t.mine::after{content:"★";position:absolute;top:-7px;right:-6px;font-size:11px;line-height:1;color:#f5b301;text-shadow:0 0 2px #fff,0 0 2px #fff}
+.mybtn{font:inherit;font-size:12px;font-weight:700;border:1.5px solid #f5b301;border-radius:999px;padding:3px 9px;background:transparent;color:#a67800;cursor:pointer;white-space:nowrap}
+.mybtn[aria-pressed="true"]{background:#f5b301;color:#fff}
+.mybtn.cal{border-style:dashed;cursor:default}
 .newalert{margin:10px 0 4px;border-radius:14px;padding:10px 12px;background:linear-gradient(135deg,#ff8a00,#ff3d6e);color:#fff;box-shadow:0 6px 18px rgba(255,61,110,.35);display:grid;gap:8px}
 .newalert[hidden]{display:none!important}
 .newalert .nah{display:flex;gap:12px;align-items:center}
@@ -218,6 +230,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <button class="btn ghost" id="setBtn" type="button" hidden aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>설정</span></button>
     </div>
   </div>
+  <div class="mycard" id="myCard" hidden></div>
   <div class="newalert" id="newAlert" hidden role="status" aria-live="polite">
     <div class="nah"><span class="bell" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><b id="naCount">1</b></span>
       <div><strong id="naTitle">새로 열린 예약</strong><small id="naSub"></small></div>
@@ -230,6 +243,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <span>처음 열 때 확인할 기간</span>
     <select id="aheadSel" aria-label="확인 기간"></select>
     <small>짧을수록 빠릅니다. 그 뒤 달은 캘린더를 넘기면 그때 확인해요.</small>
+    </div></details>
+    <details class="fold" id="fold-mine"><summary>내 예약 <small class="fs" id="sumMine"></small></summary><div class="fbody">
+      <small style="flex-basis:100%">날짜를 누른 뒤 아래 배 목록의 ☆를 누르면 내 예약으로 표시돼요. 내 예약 배가 출조 취소되면 알림, 출조 전날에도 알림을 보내요.</small>
+      <label id="mineCalAddL" hidden><input type="checkbox" id="mineCalAdd"> 내 예약을 아이폰 캘린더에 일정으로 추가</label>
+      <label id="mineCalReadL" hidden><input type="checkbox" id="mineCalRead"> 아이폰 캘린더에서 배 이름이 들어간 일정을 내 예약으로 표시</label>
     </div></details>
     <details class="fold" id="fold-watch"><summary>빈자리 알림 <small class="fs" id="sumWatch"></small></summary><div class="fbody">
     <div class="wbox" id="wBox">
@@ -325,10 +343,30 @@ const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wi
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
 const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{},O=(st.seats[mk]&&st.seats[mk].opened)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]),k=`${mk}|${b.name}|${d}`;
   const re=s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(k),nw=!re&&s==="open"&&String(O[b.name]||"")[d-1]==="1"&&!ACK.has(k);
-  return{b,s,re,nw,sp:spOf((B.sp||"")[d-1]),fn:(B.fn||[])[d-1]||""}}).filter(r=>r.s&&st.sp.has(r.sp))};
+  return{b,s,re,nw,mk,d,sp:spOf((B.sp||"")[d-1]),fn:(B.fn||[])[d-1]||""}}).filter(r=>r.s&&st.sp.has(r.sp))};
 // 시크릿 버스는 출조 설명에서 뽑은 어종 이름을, 나머지는 어종 분류를 보여 준다
 const spText=r=>r.fn||SP[r.sp];
-const flagCls=r=>r.re?" reopen":r.nw?" fresh":"";
+const flagCls=r=>(r.re?" reopen":r.nw?" fresh":"")+(isMine(r.mk,r.b.name,r.d)?" mine":"");
+// ── 내 예약: 직접 표시(★) + 아이폰 캘린더에서 읽은 일정(배 이름이 들어간 일정) ──
+let MINE=new Set();try{MINE=new Set(window.__mine||(window.__settings&&window.__settings.mine)||JSON.parse(localStorage.getItem("mine")||"[]"))}catch(e){}
+const MINE_CAL=new Set(window.__mineCal||[]);
+const isMine=(mk,name,d)=>MINE.has(`${mk}|${name}|${d}`)||MINE_CAL.has(`${mk}|${name}|${d}`);
+function saveMine(changed,on){try{localStorage.setItem("mine",JSON.stringify([...MINE]))}catch(e){}
+  if(IN_APP)location.href="fishing://mine?list="+encodeURIComponent(JSON.stringify([...MINE]))+"&key="+encodeURIComponent(changed||"")+"&on="+(on?1:0)}
+function toggleMine(k){const on=!MINE.has(k);on?MINE.add(k):MINE.delete(k);saveMine(k,on);render()}
+function myCard(){
+  const box=document.getElementById("myCard");const all=[...new Set([...MINE,...MINE_CAL])].map(k=>{const[mk,name,d]=k.split("|");return{k,mk,name,d:+d}})
+    .filter(x=>`${x.mk}-${pad(x.d)}`>=TODAY).sort((a,b)=>(a.mk+pad(a.d)).localeCompare(b.mk+pad(b.d)));
+  box.hidden=!all.length;if(!all.length)return;
+  const t0=new Date(TODAY+"T00:00:00");
+  box.innerHTML=`<b>★ 내 예약</b><div class="mi"></div><small>배를 누르면 그 날짜로 이동 · 날짜를 누른 뒤 아래 목록의 ★로 표시/해제</small>`;
+  const mi=box.querySelector(".mi");
+  all.forEach(x=>{const y=+x.mk.slice(0,4),m=+x.mk.slice(5),dt=new Date(y,m-1,x.d),dd=Math.round((dt-t0)/864e5);
+    const B=monthBoats(x.mk)[x.name],v=B?B.s[x.d-1]:null,cx=v==="x";
+    const b=document.createElement("button");b.type="button";if(cx)b.className="cx";
+    b.textContent=`${m}/${x.d}(${WD[dt.getDay()]}) ${x.name} · ${dd===0?"오늘":dd===1?"내일":"D-"+dd}${cx?" · 출조 취소!":""}${MINE_CAL.has(x.k)&&!MINE.has(x.k)?" 📅":""}`;
+    b.onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(x.mk));st.day=x.d;render();document.getElementById("panel").scrollIntoView({behavior:"smooth",block:"start"})};mi.append(b)});
+}
 const flagTxt=r=>r.re?"취소로 다시 열림":r.nw?"새로 열린 예약":"";
 
 function meta(){
@@ -400,7 +438,7 @@ function panel(){
   const MB=monthBoats(mk);
   const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
-  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${spText(r)} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span><a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
+  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${spText(r)} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE_CAL.has(k)&&!MINE.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:`<button type="button" class="mybtn" data-mine="${k}" aria-pressed="${MINE.has(k)}">${MINE.has(k)?"★ 내 예약":"☆ 내 예약"}</button>`})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
     :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   document.getElementById("panel").innerHTML=h;
 }
@@ -474,11 +512,17 @@ function foldSums(){
   const sitesOn=Object.keys(SITE_LABEL).filter(u=>BOATS.some(b=>b.u===u&&st.on.has(b.id))).length;
   set("sumBar",`사이트 ${sitesOn}/${Object.keys(SITE_LABEL).length} · 배 ${BOATS.filter(b=>st.on.has(b.id)).length}/${BOATS.length} · 어종 ${st.sp.size}/3`+(st.only?" · 자리 있는 배만":""));
   set("sumAhead",window.__ahead?`${window.__ahead}개월`:"");
+  set("sumMine",`${[...new Set([...MINE,...MINE_CAL])].filter(k=>{const[mk,,d]=k.split("|");return`${mk}-${pad(+d)}`>=TODAY}).length}건`);
   const w=window.__watch||{},R=w.rules||{},nm={reopen:"취소",open:"새로 열림",any:"빈자리"};
   const on=Object.keys(nm).filter(k=>R[k]&&R[k].on).map(k=>nm[k]);
   set("sumWatch",w.on&&on.length?`켜짐 · ${on.join("·")}`:"꺼짐");
 }
-function render(){syncAck();newAlert();keyRow();grid();panel();stamp();askMonth();foldSums()}
+document.addEventListener("click",e=>{const t=e.target.closest&&e.target.closest("[data-mine]");if(t)toggleMine(t.dataset.mine)});
+setTimeout(()=>{const o=window.__mineOpt||{},a=document.getElementById("mineCalAdd"),r=document.getElementById("mineCalRead");
+  if(IN_APP&&!window.__isPC){document.getElementById("mineCalAddL").hidden=false;document.getElementById("mineCalReadL").hidden=false}
+  a.checked=!!o.add;r.checked=!!o.read;
+  const send=()=>{if(IN_APP)location.href="fishing://minecal?add="+(a.checked?1:0)+"&read="+(r.checked?1:0)};a.onchange=send;r.onchange=send},0);
+function render(){syncAck();myCard();newAlert();keyRow();grid();panel();stamp();askMonth();foldSums()}
 // 선사 공지사항 (앱·PC가 확인해서 넣어 줌): sites=[{label,items:[{title,url,isNew}],error}]
 window.__setNotices=(sites,freshCount)=>{
   const f=document.getElementById("fold-notice"),box=document.getElementById("noticeBox");if(!f)return;
