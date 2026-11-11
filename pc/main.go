@@ -33,6 +33,12 @@ var webFS embed.FS
 
 const addr = "127.0.0.1:47321"
 
+const altAddr = "127.0.0.1:47322"
+
+// 빌드할 때 넣는 버전 (build.sh: -X main.version=...)
+var version = "dev"
+var serveAddr = addr
+
 var allowed = map[string]bool{
 	"lukina.sunsang24.com":      true,
 	"dyfishing.sunsang24.com":   true,
@@ -69,24 +75,63 @@ func main() {
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		// 이미 실행 중이면 브라우저만 다시 연다
+		// 이미 실행 중: 같은 버전이면 브라우저만 다시 열고, 예전 버전이면 끄고 새 버전으로 시작
 		if r, e := http.Get("http://" + addr + "/api/ping"); e == nil {
+			b, _ := io.ReadAll(r.Body)
 			r.Body.Close()
-			openBrowser("http://" + addr + "/")
-			return
+			if strings.TrimSpace(string(b)) == "fishing "+version {
+				openBrowser("http://" + addr + "/")
+				return
+			}
+			if q, e := http.Post("http://"+addr+"/api/quit", "text/plain", nil); e == nil {
+				q.Body.Close()
+			}
+			for i := 0; i < 30 && err != nil; i++ {
+				time.Sleep(200 * time.Millisecond)
+				ln, err = net.Listen("tcp", addr)
+			}
 		}
-		log.Fatalf("포트 %s를 열 수 없습니다: %v", addr, err)
+		if err != nil {
+			// 예전 버전이 스스로 꺼지지 않으면(끄기 기능이 없던 버전) 옆 포트에서 새 버전을 띄운다
+			if r, e := http.Get("http://" + altAddr + "/api/ping"); e == nil {
+				b, _ := io.ReadAll(r.Body)
+				r.Body.Close()
+				if strings.TrimSpace(string(b)) == "fishing "+version {
+					openBrowser("http://" + altAddr + "/")
+					return
+				}
+			}
+			ln, err = net.Listen("tcp", altAddr)
+			if err == nil {
+				serveAddr = altAddr
+			}
+		}
+		if err != nil {
+			log.Fatalf("포트 %s를 열 수 없습니다: %v", addr, err)
+		}
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
 	sub, _ := fs.Sub(webFS, "web")
-	mux.Handle("/host.js", http.FileServer(http.FS(sub)))
+	hostJS := http.FileServer(http.FS(sub))
+	mux.HandleFunc("/host.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store") // 새 버전으로 바꾼 뒤 옛 코드가 남지 않게
+		hostJS.ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		io.WriteString(w, "bye")
+		go func() { time.Sleep(150 * time.Millisecond); os.Exit(0) }()
+	})
 	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
 		pingMu.Lock()
 		lastPing = time.Now()
 		pingMu.Unlock()
-		io.WriteString(w, "fishing")
+		io.WriteString(w, "fishing "+version)
 	})
 	mux.HandleFunc("/api/fetch", serveFetch)
 	mux.HandleFunc("/api/store/", serveStore)
@@ -104,8 +149,8 @@ func main() {
 		}
 	}()
 
-	go func() { time.Sleep(300 * time.Millisecond); openBrowser("http://" + addr + "/") }()
-	log.Printf("실행 중: http://%s/ (데이터 폴더 %s)", addr, dataDir)
+	go func() { time.Sleep(300 * time.Millisecond); openBrowser("http://" + serveAddr + "/") }()
+	log.Printf("실행 중: http://%s/ 버전 %s (데이터 폴더 %s)", serveAddr, version, dataDir)
 	log.Fatal(http.Serve(ln, mux))
 }
 
@@ -134,8 +179,8 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 		watch = string(v)
 	}
 	ba, _ := json.Marshal(boatsAll)
-	inject := fmt.Sprintf(`<script>window.__inScriptable=true;window.__isPC=true;window.__seatsData=%s;window.__settings=%s;window.__checked=[];window.__ahead=%s;window.__watch=%s;window.__boatsAll=%s;</script>`,
-		safeJS(seats), safeJS(settings), ahead, safeJS(watch), ba)
+	inject := fmt.Sprintf(`<script>window.__inScriptable=true;window.__isPC=true;window.__pcVersion=%q;window.__seatsData=%s;window.__settings=%s;window.__checked=[];window.__ahead=%s;window.__watch=%s;window.__boatsAll=%s;</script>`,
+		version, safeJS(seats), safeJS(settings), ahead, safeJS(watch), ba)
 	html := strings.Replace(string(b), "<head>", "<head>"+inject, 1)
 	html = strings.Replace(html, "</body>", `<script src="/host.js"></script></body>`, 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
