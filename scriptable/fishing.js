@@ -653,7 +653,10 @@ async function calRead() {
     return [...out];
   } catch (e) { return []; }
 }
-function mineKeys(settings, calKeys) { return [...new Set([...(settings.mine || []), ...(calKeys || settings.mineCalKeys || [])])]; }
+function mineKeys(settings, calKeys) {
+  const calOn = !settings.mineCal || settings.mineCal.read !== false;
+  return [...new Set([...(settings.mine || []), ...(calOn ? (calKeys || settings.mineCalKeys || []) : [])])];
+}
 // 내 예약 배가 이번 확인에서 '출조 취소'로 바뀐 것
 function mineCancelled(oldData, newData, keys) {
   const st = (d, k) => { const [mk, name, day] = k.split("|"); const b = d && d.months && d.months[mk] && d.months[mk].boats && d.months[mk].boats[name]; return b ? b.s[+day - 1] : undefined; };
@@ -800,9 +803,9 @@ async function main(wv, say) {
   await say("캘린더 화면 받는 중…");
   const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
   if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
-  // 아이폰 캘린더에서 내 예약 읽기 (켜 두었을 때)
-  let calKeys = [];
-  if (settings.mineCal && settings.mineCal.read) { calKeys = await calRead(); saveSettings({ ...loadSettings(), mineCalKeys: calKeys }); }
+  // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
+  const calOn = !settings.mineCal || settings.mineCal.read !== false;
+  const calKeys = calOn ? (settings.mineCalKeys || []) : [];
   const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
@@ -953,8 +956,10 @@ async function main(wv, say) {
       (async () => {
         if (add && !(cur.mineCal && cur.mineCal.add)) for (const k of cur.mine || []) await calAdd(k);
         let ck = [];
-        if (read) { ck = await calRead(); saveSettings({ ...loadSettings(), mineCalKeys: ck }); }
-        await js(`__setChecking(false, ${JSON.stringify((add ? "내 예약을 아이폰 캘린더에 추가해요. " : "") + (read ? `캘린더에서 내 예약 ${ck.length}건을 찾았어요. 앱을 다시 열면 표시돼요.` : ""))})`);
+        if (read) ck = await calRead();
+        saveSettings({ ...loadSettings(), mineCalKeys: ck });
+        await js(`__setMineCal(${JSON.stringify(ck)})`);
+        await js(`__setChecking(false, ${JSON.stringify((add ? "내 예약을 아이폰 캘린더에 추가해요. " : "") + (read ? `아이폰 캘린더에서 내 예약 ${ck.length}건을 찾았어요.` : "캘린더에서 읽기를 껐어요."))})`);
       })();
       return false;
     }
@@ -1007,6 +1012,10 @@ async function main(wv, say) {
     first.forEach(([y, m]) => checked.add(ymKey(y, m)));
     await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, ${JSON.stringify("최근 확인 결과입니다. 새로 확인하려면 '지금 확인'을 누르세요.")})`);
   } else want(first);
+  if (calOn) calRead().then(async (ck) => {
+    saveSettings({ ...loadSettings(), mineCalKeys: ck });
+    await js(`__setMineCal(${JSON.stringify(ck)})`);
+  });
   appWatch().then(appNotices, appNotices);
 }
 

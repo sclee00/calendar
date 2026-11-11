@@ -46,7 +46,15 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);line-height
 .t.mine{position:relative;border-radius:7px;box-shadow:0 0 0 2.5px #f5b301}
 .t.mine::after{content:"★";position:absolute;top:-7px;right:-6px;font-size:11px;line-height:1;color:#f5b301;text-shadow:0 0 2px #fff,0 0 2px #fff}
 .mybtn{font:inherit;font-size:12px;font-weight:700;border:1.5px solid #f5b301;border-radius:999px;padding:3px 9px;background:transparent;color:#a67800;cursor:pointer;white-space:nowrap}
-.mybtn[aria-pressed="true"]{background:#f5b301;color:#fff}
+.mybtn.on{background:#f5b301;color:#fff}
+.row,.cal .t{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.msheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center}
+.msheet>div{width:min(420px,100%);margin:0 8px 10px;display:grid;gap:8px}
+.msheet .grp{background:var(--surface);border-radius:14px;overflow:hidden;display:grid}
+.msheet .ttl{padding:10px 12px;font-size:12.5px;color:var(--muted);text-align:center;border-bottom:1px solid var(--line)}
+.msheet button{font:inherit;font-size:16px;border:0;background:var(--surface);color:#1f5f99;padding:13px;cursor:pointer;border-top:1px solid var(--line)}
+.msheet .grp button:first-of-type{border-top:0}
+.msheet button.b{font-weight:700}
 .mybtn.cal{border-style:dashed;cursor:default}
 .newalert{margin:10px 0 4px;border-radius:14px;padding:10px 12px;background:linear-gradient(135deg,#ff8a00,#ff3d6e);color:#fff;box-shadow:0 6px 18px rgba(255,61,110,.35);display:grid;gap:8px}
 .newalert[hidden]{display:none!important}
@@ -245,7 +253,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <small>짧을수록 빠릅니다. 그 뒤 달은 캘린더를 넘기면 그때 확인해요.</small>
     </div></details>
     <details class="fold" id="fold-mine"><summary>내 예약 <small class="fs" id="sumMine"></small></summary><div class="fbody">
-      <small style="flex-basis:100%">날짜를 누른 뒤 아래 배 목록의 ☆를 누르면 내 예약으로 표시돼요. 내 예약 배가 출조 취소되면 알림, 출조 전날에도 알림을 보내요.</small>
+      <small style="flex-basis:100%">캘린더나 아래 배 목록에서 배를 꾹 누르면(PC는 오른쪽 클릭) 내 예약으로 표시·해제돼요. 내 예약 배가 출조 취소되면 알림, 출조 전날에도 알림을 보내요.</small>
       <label id="mineCalAddL" hidden><input type="checkbox" id="mineCalAdd"> 내 예약을 아이폰 캘린더에 일정으로 추가</label>
       <label id="mineCalReadL" hidden><input type="checkbox" id="mineCalRead"> 아이폰 캘린더에서 배 이름이 들어간 일정을 내 예약으로 표시</label>
     </div></details>
@@ -334,9 +342,9 @@ const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice
 if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.name)).map(b=>b.id));
 if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
-function badge(b,cls,sp,title,style=""){
+function badge(b,cls,sp,title,style="",attrs=""){
   const S=b.bus?SHAPE.bus:(SHAPE[sp]||SHAPE.j);
-  return `<span class="t ${cls}" title="${title}"${style?` style="${style}"`:""}><svg viewBox="0 0 48 32" aria-hidden="true"><path class="shape" d="${S.d}"/>`+
+  return `<span class="t ${cls}" title="${title}"${style?` style="${style}"`:""}${attrs?" "+attrs:""}><svg viewBox="0 0 48 32" aria-hidden="true"><path class="shape" d="${S.d}"/>`+
     (b.ab?`<text x="${S.tx}" y="${S.ty}" text-anchor="middle" dominant-baseline="central">${b.ab}</text>`:"")+`</svg></span>`;
 }
 const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
@@ -359,7 +367,7 @@ function myCard(){
     .filter(x=>`${x.mk}-${pad(x.d)}`>=TODAY).sort((a,b)=>(a.mk+pad(a.d)).localeCompare(b.mk+pad(b.d)));
   box.hidden=!all.length;if(!all.length)return;
   const t0=new Date(TODAY+"T00:00:00");
-  box.innerHTML=`<b>★ 내 예약</b><div class="mi"></div><small>배를 누르면 그 날짜로 이동 · 날짜를 누른 뒤 아래 목록의 ★로 표시/해제</small>`;
+  box.innerHTML=`<b>★ 내 예약</b><div class="mi"></div><small>누르면 그 날짜로 이동 · 배를 꾹 누르거나(PC: 오른쪽 클릭) 표시/해제</small>`;
   const mi=box.querySelector(".mi");
   all.forEach(x=>{const y=+x.mk.slice(0,4),m=+x.mk.slice(5),dt=new Date(y,m-1,x.d),dd=Math.round((dt-t0)/864e5);
     const B=monthBoats(x.mk)[x.name],v=B?B.s[x.d-1]:null,cx=v==="x";
@@ -425,7 +433,7 @@ function grid(){
     let rows=cellRows(mk,d);
     let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div><div class="tiles">`;
     if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
-    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`)});
+    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
     el.innerHTML=h+"</div>";el.onclick=()=>{st.day=d;render()};g.append(el);
   }
   const tail=(7-(first+last)%7)%7;
@@ -438,7 +446,7 @@ function panel(){
   const MB=monthBoats(mk);
   const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
-  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${spText(r)} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE_CAL.has(k)&&!MINE.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:`<button type="button" class="mybtn" data-mine="${k}" aria-pressed="${MINE.has(k)}">${MINE.has(k)?"★ 내 예약":"☆ 내 예약"}</button>`})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
+  h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row" data-k="${mk}|${b.name}|${d}">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${spText(r)} · ${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE.has(k)?`<span class="mybtn on">★ 내 예약</span>`:MINE_CAL.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:""})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
     :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   document.getElementById("panel").innerHTML=h;
 }
@@ -517,10 +525,28 @@ function foldSums(){
   const on=Object.keys(nm).filter(k=>R[k]&&R[k].on).map(k=>nm[k]);
   set("sumWatch",w.on&&on.length?`켜짐 · ${on.join("·")}`:"꺼짐");
 }
-document.addEventListener("click",e=>{const t=e.target.closest&&e.target.closest("[data-mine]");if(t)toggleMine(t.dataset.mine)});
+// 내 예약 표시/해제: 배를 꾹 누르기(아이폰) 또는 오른쪽 클릭(PC)
+function mineSheet(k){
+  const[mk,name,d]=k.split("|"),m=+mk.slice(5),dt=new Date(+mk.slice(0,4),m-1,+d),on=MINE.has(k),cal=MINE_CAL.has(k)&&!on;
+  const el=document.createElement("div");el.className="msheet";
+  el.innerHTML=`<div><div class="grp"><div class="ttl">${m}/${d}(${WD[dt.getDay()]}) ${name}</div>${cal?`<button type="button" disabled>📅 아이폰 캘린더 일정으로 표시 중</button>`:`<button type="button" class="b" data-act="t">${on?"★ 내 예약 해제":"☆ 내 예약으로 표시"}</button>`}</div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
+  el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(a&&a.dataset.act==="t"){el.remove();toggleMine(k)}};
+  document.body.append(el);
+}
+document.addEventListener("contextmenu",e=>{const t=e.target.closest&&e.target.closest("[data-k]");if(!t)return;e.preventDefault();mineSheet(t.dataset.k)});
+(()=>{let timer=null,sx=0,sy=0,fired=false;
+  document.addEventListener("touchstart",e=>{const t=e.target.closest&&e.target.closest("[data-k]");if(!t)return;fired=false;const p=e.touches[0];sx=p.clientX;sy=p.clientY;
+    timer=setTimeout(()=>{fired=true;if(navigator.vibrate)navigator.vibrate(15);mineSheet(t.dataset.k)},550)},{passive:true});
+  const stop=()=>{clearTimeout(timer);timer=null};
+  document.addEventListener("touchmove",e=>{const p=e.touches[0];if(Math.abs(p.clientX-sx)>8||Math.abs(p.clientY-sy)>8)stop()},{passive:true});
+  document.addEventListener("touchend",e=>{stop();if(fired){e.preventDefault();fired=false}});
+  document.addEventListener("touchcancel",stop);
+})();
+// 아이폰 캘린더에서 읽은 내 예약을 앱이 넣어 줌
+window.__setMineCal=keys=>{MINE_CAL.clear();(keys||[]).forEach(k=>MINE_CAL.add(k));render()};
 setTimeout(()=>{const o=window.__mineOpt||{},a=document.getElementById("mineCalAdd"),r=document.getElementById("mineCalRead");
   if(IN_APP&&!window.__isPC){document.getElementById("mineCalAddL").hidden=false;document.getElementById("mineCalReadL").hidden=false}
-  a.checked=!!o.add;r.checked=!!o.read;
+  a.checked=!!o.add;r.checked=o.read!==false; // 캘린더에서 읽기는 기본 켜짐
   const send=()=>{if(IN_APP)window.__host("fishing://minecal?add="+(a.checked?1:0)+"&read="+(r.checked?1:0))};a.onchange=send;r.onchange=send},0);
 function render(){syncAck();myCard();newAlert();keyRow();grid();panel();stamp();askMonth();foldSums()}
 // 선사 공지사항 (앱·PC가 확인해서 넣어 줌): sites=[{label,items:[{title,url,isNew}],error}]
