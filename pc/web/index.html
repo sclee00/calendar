@@ -655,7 +655,11 @@ if(IN_APP){
       <div class="wrow"><span>어종</span><div class="chips" data-f="sp"></div></div>
       <div class="wrow"><span>배 <button type="button" class="mini" data-f="all">모두</button><button type="button" class="mini" data-f="none">하나만</button></span><div class="chips" data-f="boats"></div></div></div>`;
     const q=f=>box.querySelector(`[data-f="${f}"]`);
-    q("on").checked=!!R.on;q("from").value=R.from||"";q("to").value=R.to||"";
+    // 시작 날짜는 항상 오늘 이후: 비었거나 지난 날짜면 오늘로, 끝 날짜가 그보다 앞이면 비움(=시작일부터 30일)
+    const from0=!R.from||R.from<TODAY?TODAY:R.from;
+    q("on").checked=!!R.on;q("from").value=from0;q("to").value=R.to&&R.to>=from0?R.to:"";
+    q("from").min=TODAY;q("to").min=from0;
+    q("from").onchange=()=>{if(!q("from").value||q("from").value<TODAY)q("from").value=TODAY;q("to").min=q("from").value;if(q("to").value&&q("to").value<q("from").value)q("to").value=""};
     const body=box.querySelector(".wbody");body.hidden=!R.on;q("on").onchange=()=>{body.hidden=!q("on").checked};
     for(let n=1;n<=10;n++){const o=document.createElement("option");o.value=n;o.textContent=n+"석";q("min").append(o)}q("min").value=String(R.min||1);
     const F={dows:new Set(R.dows&&R.dows.length?R.dows:[0,1,2,3,4,5,6]),sp:new Set(R.sp&&R.sp.length?R.sp:["j","f","u"]),boats:new Set(R.boats&&R.boats.length?R.boats:allBoats)};
