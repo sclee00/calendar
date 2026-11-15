@@ -349,7 +349,7 @@ function badge(b,cls,sp,title,style="",attrs=""){
 }
 const LINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const monthBoats=mk=>(st.seats[mk]&&st.seats[mk].boats)||{};
-const cellRows=(mk,d)=>{const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{},O=(st.seats[mk]&&st.seats[mk].opened)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]),k=`${mk}|${b.name}|${d}`;
+const cellRows=(mk,d)=>{if(`${mk}-${pad(d)}`<TODAY)return[];const M=monthBoats(mk),R=(st.seats[mk]&&st.seats[mk].reopen)||{},O=(st.seats[mk]&&st.seats[mk].opened)||{};return BOATS.filter(b=>st.on.has(b.id)&&M[b.name]).map(b=>{const B=M[b.name],s=status(B.s[d-1]),k=`${mk}|${b.name}|${d}`;
   const re=s==="open"&&String(R[b.name]||"")[d-1]==="1"&&!ACK.has(k),nw=!re&&s==="open"&&String(O[b.name]||"")[d-1]==="1"&&!ACK.has(k);
   return{b,s,re,nw,mk,d,sp:spOf((B.sp||"")[d-1]),fn:(B.fn||[])[d-1]||""}}).filter(r=>r.s&&st.sp.has(r.sp))};
 // 시크릿 버스는 출조 설명에서 뽑은 어종 이름을, 나머지는 어종 분류를 보여 준다

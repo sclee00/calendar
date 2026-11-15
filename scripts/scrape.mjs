@@ -59,6 +59,8 @@ const stc = (t) => {
   return null;
 };
 const pad = (n) => String(n).padStart(2, "0");
+const todayKST = () => { const t = new Date(Date.now() + 9 * 3600e3); return [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()]; };
+const isPast = (y, m, d) => { const [ty, tm, td] = todayKST(); return y * 10000 + m * 100 + d < ty * 10000 + tm * 100 + td; }; // 오늘 이전 날짜는 확인하지 않음
 const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
 // 한국 시각 기준 이번 달부터 13개월
@@ -94,7 +96,7 @@ async function get(url) {
 function collector() {
   const out = {};
   const put = (y, m, d, name, s, sp, no, fn) => {
-    if (!name || s === null) return;
+    if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] ??= {};
     const b = (out[k][name] ??= { s: Array(L).fill(null), sp: Array(L).fill("j") });
@@ -142,7 +144,8 @@ async function scrapeTheFishing(host) {
   for (const [y, m] of MONTHS) {
     let found = 0;
     const urls = [];
-    for (let d = 1; d <= daysIn(y, m); d += 4) urls.push(`https://${host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`);
+    const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
+    for (let d = d0; d <= daysIn(y, m); d += 4) urls.push(`https://${host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`);
     const pages = [];
     for (const u of urls) pages.push(await get(u)); // 한 번에 하나씩
     for (const html of pages) {

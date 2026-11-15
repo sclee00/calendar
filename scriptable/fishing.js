@@ -15,7 +15,7 @@ const SITES = [
 ];
 const KEEP = SITES.flatMap((s) => s.boats);
 // 읽는 규칙이 바뀌면 올림 → 앱을 열 때 '최근 결과라 건너뛰기'를 하지 않고 새로 확인
-const PARSE_V = 9;
+const PARSE_V = 10;
 // 읽는 규칙이 바뀐 뒤 처음이면, 출조 버스는 예전 규칙으로 받아 둔 결과를 버린다 (새로 확인할 때까지 옛 아이콘이 남지 않게)
 function dropStale(d) {
   if (!d || d.pv === PARSE_V) return d;
@@ -41,6 +41,10 @@ const loadSettings = () => { try { return JSON.parse(fm.readString(SETTINGS)) ||
 const saveSettings = (o) => fm.writeString(SETTINGS, JSON.stringify(o));
 
 const pad = (n) => String(n).padStart(2, "0");
+
+const todayKST = () => { const t = new Date(Date.now() + 9 * 3600e3); return [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()]; };
+
+const isPast = (y, m, d) => { const [ty, tm, td] = todayKST(); return y * 10000 + m * 100 + d < ty * 10000 + tm * 100 + td; }; // 오늘 이전 날짜는 확인하지 않음
 const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
 const daysIn = (y, m) => new Date(y, m, 0).getDate();
 const ymKey = (y, m) => `${y}-${pad(m)}`;
@@ -227,7 +231,7 @@ true;`;
 async function scrapeSite(parser, site, monthList, progress) {
   const out = {};
   const put = (y, m, d, name, s, sp, no, fn) => {
-    if (!name || s === null) return;
+    if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] = out[k] || {};
     const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
@@ -245,7 +249,8 @@ async function scrapeSite(parser, site, monthList, progress) {
       if (res.found) seen = true; else if (seen) break; // 예약이 열린 마지막 달 다음에서 멈춤
     } else {
       let found = 0;
-      for (let d = 1; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
+      const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
+        for (let d = d0; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
         const res = await parse(await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
         res.rows.forEach(([dd, n, s, sp, , fn]) => put(y, m, dd, n, s, sp, null, fn));
         found += res.found;
