@@ -198,6 +198,12 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cell.past{background:var(--past)}
 .cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
 .dn{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
+.wx{display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.1;white-space:nowrap;overflow:hidden;min-width:0}
+.wx .wi{font-size:12px}
+.wx .wt{font-weight:700;font-variant-numeric:tabular-nums}
+.wx .wt i{font-style:normal;font-weight:400;color:var(--muted)}
+.wx .ww{border-radius:4px;padding:0 3px;color:#fff;font-weight:700;font-variant-numeric:tabular-nums}
+.wx .ww small{font-size:8.5px;font-weight:600;opacity:.9}
 .num{font-family:var(--f-mono);font-size:13px;font-weight:600;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;font-variant-numeric:tabular-nums;flex:none}
 .cell.past .num{color:var(--muted);font-weight:500}
 .sun .num{color:var(--full)} .sat .num{color:var(--accent)}
@@ -207,6 +213,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:520px){
   .cell{min-height:84px;padding:3px 1px 5px;gap:3px}
   .dn{gap:2px}.ml{display:none}
+  .wx{font-size:9.5px;gap:1px;justify-content:space-between}.wx .wi{font-size:10px}.wx .ww{padding:0 2px}.wx .ww small,.wx .wlo{display:none} /* 폰: 아이콘·최고기온·풍속만 */
   .tp{font-size:9px;padding:0 3px;line-height:13px}
   .tiles .t{width:22px;height:15px}
 }
@@ -247,6 +254,10 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
   <p class="notice" id="notice" hidden></p>
   <div class="setp" id="setPanel" hidden>
+    <details class="fold" id="fold-view"><summary>화면 표시 <small class="fs" id="sumView"></small></summary><div class="fbody">
+      <label><input type="checkbox" id="showWx"> 날짜 아래 날씨·기온·바람(인천) 표시</label>
+      <small style="flex-basis:100%">앞으로 16일까지만 나와요(기상 예보 범위). 바람은 그날 최대 풍속: <b style="color:#13a06e">약</b> 4m/s 미만 · <b style="color:#c9a000">보통</b> 4~7 · <b style="color:#e8780c">강</b> 7~10 · <b style="color:#e0473a">매우 강</b> 10 이상</small>
+    </div></details>
     <details class="fold" id="fold-ahead"><summary>확인 기간 <small class="fs" id="sumAhead"></small></summary><div class="fbody">
     <span>처음 열 때 확인할 기간</span>
     <select id="aheadSel" aria-label="확인 기간"></select>
@@ -418,6 +429,28 @@ function keyRow(){spRow();siteRow();
   document.getElementById("onlyOpen").setAttribute("aria-pressed",st.only);
 }
 function saveOn(){try{localStorage.setItem("boatsOn",JSON.stringify(BOATS.filter(b=>st.on.has(b.id)).map(b=>b.name)))}catch(e){}}
+// ── 날씨: 인천(연안부두) 예보 — Open-Meteo(무료, 키 없음). 1시간 동안 이 기기에 저장해 둠 ──
+let SHOW_WX=true;try{SHOW_WX=localStorage.getItem("showWx")!=="0"}catch(e){}
+let WX={};
+const WX_ICON=c=>c===0?"☀️":c<=2?"🌤️":c===3?"☁️":c<=48?"🌫️":c<=57?"🌦️":c<=67?"🌧️":c<=77?"❄️":c<=82?"🌦️":c<=86?"🌨️":"⛈️";
+const WX_NAME=c=>c===0?"맑음":c<=2?"구름 조금":c===3?"흐림":c<=48?"안개":c<=57?"이슬비":c<=67?"비":c<=77?"눈":c<=82?"소나기":c<=86?"눈 소나기":"뇌우";
+const tCol=t=>t<=0?"#2f6fde":t<=10?"#1c9bb5":t<=20?"#13a06e":t<=28?"#e8780c":"#e0473a";
+const wCol=w=>w<4?"#13a06e":w<7?"#c9a000":w<10?"#e8780c":"#e0473a";
+function wxLine(k){
+  const w=SHOW_WX&&WX[k];if(!w)return"";
+  return `<div class="wx" title="인천 ${WX_NAME(w.c)} · 최저 ${w.lo}° 최고 ${w.hi}° · 바람 최대 ${w.w}m/s (순간 ${w.g}m/s)"><span class="wi">${WX_ICON(w.c)}</span><span class="wt"><span class="wlo" style="color:${tCol(w.lo)}">${w.lo}<i>/</i></span><span style="color:${tCol(w.hi)}">${w.hi}°</span></span><span class="ww" style="background:${wCol(w.w)}">${w.w}<small>m/s</small></span></div>`;
+}
+async function loadWx(){
+  if(!SHOW_WX)return;
+  try{const c=JSON.parse(localStorage.getItem("wxCache")||"null");if(c&&Date.now()-c.at<3600e3){WX=c.d;render();return}}catch(e){}
+  try{
+    const u="https://api.open-meteo.com/v1/forecast?latitude=37.45&longitude=126.60&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&wind_speed_unit=ms&timezone=Asia%2FSeoul&forecast_days=16";
+    const j=await fetch(u).then(r=>r.json()),D=j.daily,d={};
+    D.time.forEach((t,i)=>{d[t]={c:D.weather_code[i],hi:Math.round(D.temperature_2m_max[i]),lo:Math.round(D.temperature_2m_min[i]),w:Math.round(D.wind_speed_10m_max[i]),g:Math.round(D.wind_gusts_10m_max[i])}});
+    WX=d;try{localStorage.setItem("wxCache",JSON.stringify({at:Date.now(),d}))}catch(e){}
+    render();
+  }catch(e){}
+}
 function grid(){
   const mk=MONTHS[st.m],[Y,M]=mk.split("-").map(Number);
   document.getElementById("mtitle").textContent=`${Y}년 ${M}월`;
@@ -431,7 +464,7 @@ function grid(){
     const el=document.createElement("button");el.type="button";el.id="c-"+k;
     el.className="cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(d===st.day?" sel":"");
     let rows=cellRows(mk,d);
-    let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div><div class="tiles">`;
+    let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div>${wxLine(k)}<div class="tiles">`;
     if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
     rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
     el.innerHTML=h+"</div>";el.onclick=()=>{st.day=d;render()};g.append(el);
@@ -628,6 +661,15 @@ if(IN_APP){
   sel.onchange=()=>{const n=+sel.value;window.__ahead=n;location.href="fishing://settings?ahead="+n};
 }
 load(false);
+// 설정 버튼: 웹에서도 '화면 표시'는 쓸 수 있게
+(()=>{const sb=document.getElementById("setBtn"),sp=document.getElementById("setPanel");
+  if(!IN_APP){sb.hidden=false;sb.onclick=()=>{sp.hidden=!sp.hidden;sb.setAttribute("aria-expanded",String(!sp.hidden))};
+    ["fold-ahead","fold-watch","fold-mine"].forEach(id=>{const e=document.getElementById(id);if(e)e.hidden=true})}
+  const cb=document.getElementById("showWx");cb.checked=SHOW_WX;
+  const sum=()=>{document.getElementById("sumView").textContent=SHOW_WX?"날씨 켜짐":"날씨 꺼짐"};sum();
+  cb.onchange=()=>{SHOW_WX=cb.checked;try{localStorage.setItem("showWx",SHOW_WX?"1":"0")}catch(e){}sum();SHOW_WX?loadWx():render()};
+  loadWx();
+})();
 // 빈자리 알림 설정
 if(IN_APP){
   const W=Object.assign({on:false,interval:60},window.__watch||{});
