@@ -767,6 +767,7 @@ async function run() {
     await wv.loadHTML(LOADING);
     let closed = false;
     shown = wv.present(true).then(() => { closed = true; });
+    if (!prevAlive && i === 0) break; // 이전 실행이 떠 있지 않았으면 기다리지 않는다
     await sleep(700);
     if (!closed) break; // 제대로 떠 있음
     await sleep(800);   // 바로 닫혔으면(이전 화면과 겹침) 다시 시도
@@ -793,10 +794,10 @@ async function run() {
 
 async function main(wv, say) {
   // 마지막 결과(아이폰에 저장된 것, 없으면 웹 캘린더의 것)로 캘린더를 먼저 띄운다
-  await say("마지막 결과 불러오는 중…");
-  let old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null;
-  const web = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
-  if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
+  let old = null; try { old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null; } catch (e) {}
+  // 빨리 띄우기: 아이폰에 저장된 결과가 있으면 그걸로 바로 그리고, 웹 캘린더 결과는 뒤에서 받아 더 새것이면 바꿔 넣는다
+  const webP = loadJSON(RAW + "data/seats.json?t=" + Date.now());
+  if (!old) { await say("마지막 결과 불러오는 중…"); old = (await webP) || { months: {} }; }
   old = dropStale(old);
   const settings = loadSettings();
   const okAhead = (n) => Number.isInteger(n) && n >= 1 && n <= 12;
@@ -805,9 +806,13 @@ async function main(wv, say) {
   let first = all.slice(0, ahead);
   const checked = new Set(first.map(([y, m]) => ymKey(y, m)));
 
-  await say("캘린더 화면 받는 중…");
-  const html = await new Request(PAGE + "?t=" + Date.now()).loadString();
-  if (!html || !html.includes("<head>")) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
+  // 캘린더 화면도 아이폰에 저장해 둔 것으로 바로 띄우고, 새 화면은 뒤에서 받아 다음 실행부터 쓴다
+  const PAGE_FILE = fm.joinPath(DIR, "page.html");
+  const okHtml = (h) => !!h && h.includes("<head>") && h.includes("</body>");
+  const pageP = new Request(PAGE + "?t=" + Date.now()).loadString().then((h) => { if (okHtml(h)) { try { fm.writeString(PAGE_FILE, h); } catch (e) {} return h; } return null; }, () => null);
+  let html = null; try { if (fm.fileExists(PAGE_FILE)) html = fm.readString(PAGE_FILE); } catch (e) {}
+  if (!okHtml(html)) { await say("캘린더 화면 받는 중…"); html = await pageP; }
+  if (!okHtml(html)) throw new Error("캘린더 화면을 받지 못했습니다. 인터넷 연결을 확인하세요.");
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
@@ -1009,6 +1014,11 @@ async function main(wv, say) {
   await wv.loadHTML(html.replace("<head>", "<head>" + inject), PAGE);
   await wv.evaluateJavaScript(PARSER);
   console.log("캘린더 표시 완료, 확인 시작");
+  webP.then((web) => {
+    if (!web || busy || queue.length || !(web.updatedAt > (old.updatedAt || ""))) return;
+    old = dropStale(web);
+    js(`__applySeats(${JSON.stringify(old)})`);
+  });
   await askToken();
   // 앱을 닫아 둔 동안(자동화) 최근 30분 안에 확인했으면 열 때 다시 확인하지 않는다
   let cached = null; try { cached = JSON.parse(fm.readString(CACHE)); } catch (e) {}

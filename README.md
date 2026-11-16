@@ -16,6 +16,8 @@
 6. (선택) 처음 실행할 때 "웹 캘린더에도 올릴까요?"가 나옵니다. GitHub 토큰을 넣으면 확인 결과가 웹 캘린더에도 반영됩니다. 아이폰에서만 볼 거면 '아이폰에서만'.
 7. 홈 화면 아이콘: 스크립트를 길게 눌러 Share → **Add to Home Screen**.
 
+빨리 뜨도록, 실행할 때는 아이폰에 저장해 둔 코드·화면·결과로 바로 띄우고 최신 코드·화면은 뒤에서 받아 **다음 실행부터** 씁니다. 그래서 고친 내용은 두 번째 실행부터 보입니다.
+
 ### GitHub 토큰 만들기 (웹 반영을 원할 때만)
 
 GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token
