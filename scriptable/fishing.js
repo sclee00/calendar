@@ -1035,8 +1035,7 @@ async function run() {
     await wv.loadHTML(LOADING);
     let closed = false;
     shown = wv.present(true).then(() => { closed = true; });
-    if (!prevAlive && i === 0) break; // 이전 실행이 떠 있지 않았으면 기다리지 않는다
-    await sleep(700);
+    await sleep(prevAlive ? 700 : 350);
     if (!closed) break; // 제대로 떠 있음
     await sleep(800);   // 바로 닫혔으면(이전 화면과 겹침) 다시 시도
   }
@@ -1046,7 +1045,7 @@ async function run() {
   beat();
   const say = (t) => { console.log(t); return wv.evaluateJavaScript(`(function(){var m=document.getElementById("m");if(m)m.textContent=${JSON.stringify(t)};return 1})()`).catch(() => null); };
   try {
-    await main(wv, say);
+    await main(wv, say, shown);
   } catch (e) {
     console.error(e);
     await say("오류: " + (e && e.message ? e.message : e));
@@ -1057,10 +1056,11 @@ async function run() {
     await a.presentAlert();
   }
   await shown;
-  try { fm.remove(ALIVE); } catch (e) {}
+  // 화면을 닫은 뒤에도 Scriptable이 몇 초 더 정리하므로, 그동안 다시 열면 기다렸다 띄우도록 닫은 시각을 남긴다
+  try { fm.writeString(ALIVE, String(Date.now())); } catch (e) {}
 }
 
-async function main(wv, say) {
+async function main(wv, say, wvClosed) {
   // 마지막 결과(아이폰에 저장된 것, 없으면 웹 캘린더의 것)로 캘린더를 먼저 띄운다
   let old = null; try { old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null; } catch (e) {}
   // 빨리 띄우기: 아이폰에 저장된 결과가 있으면 그걸로 바로 그리고, 웹 캘린더 결과는 뒤에서 받아 더 새것이면 바꿔 넣는다
@@ -1305,6 +1305,24 @@ async function main(wv, say) {
   await wv.loadHTML(html.replace("<head>", "<head>" + injectNow()), PAGE);
   await wv.evaluateJavaScript(parserSrc());
   console.log("캘린더 표시 완료, 확인 시작");
+  // 화면 지킴이: 캘린더 화면이 하얗게 비어 버리면(화면을 그리는 부분이 멈추거나 꺼짐) 다시 그린다
+  let viewDone = false, bad = 0;
+  const guard = async () => {
+    if (viewDone) return;
+    if (busy) { bad = 0; Timer.schedule(3000, false, guard); return; } // 확인 중에는 화면이 바빠 응답이 늦을 수 있어 건너뜀
+    const ok = await Promise.race([
+      wv.evaluateJavaScript(`document.getElementById("mtitle")&&document.body.innerText.length>20?1:0`).catch(() => 0),
+      sleep(4000).then(() => 0),
+    ]);
+    bad = ok === 1 ? 0 : bad + 1;
+    if (bad >= 2) {
+      bad = 0; console.log("빈 화면 감지 → 다시 그림");
+      try { await wv.loadHTML(html.replace("<head>", "<head>" + injectNow()), PAGE); await wv.evaluateJavaScript(parserSrc()); await js(`window.__checked=${JSON.stringify([...checked])};__setChecking(false, "")`); } catch (e) {}
+    }
+    Timer.schedule(3000, false, guard);
+  };
+  Timer.schedule(3000, false, guard);
+  wvClosed.then(() => { viewDone = true; });
   webP.then((web) => {
     if (!web || busy || queue.length || !(web.updatedAt > (old.updatedAt || ""))) return;
     old = dropStale(web);
