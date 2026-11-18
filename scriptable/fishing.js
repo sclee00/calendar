@@ -924,7 +924,7 @@ async function main(wv, say) {
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -940,7 +940,8 @@ async function main(wv, say) {
     const show = () => js(`__setChecking(true, ${JSON.stringify("확인 중: " + Object.values(doing).filter(Boolean).join(", "))})`);
     // 네 사이트를 동시에 확인하되, 한 사이트 안에서는 요청을 하나씩 보낸다
     const groups = SITES.map((x) => [x]);
-    const ocr = makeOcr((code) => wv.evaluateJavaScript(code, true));
+    // 빠른 모드(기본): 그림 속 어종은 새로 읽지 않고 읽어 둔 결과만 쓴다. 보통 모드: 새 그림도 읽는다
+    const ocr = makeOcr(loadSettings().mode === "normal" ? (code) => wv.evaluateJavaScript(code, true) : null);
     await Promise.all(groups.map(async (group, gi) => {
       for (const site of group) {
         try {
@@ -1050,7 +1051,9 @@ async function main(wv, say) {
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list); return false;
     }
-    if (u.startsWith("fishing://settings")) { // 설정: 확인 기간 변경
+    if (u.startsWith("fishing://settings")) { // 설정: 확인 기간·방식 변경
+      const md = (/mode=(fast|normal)/.exec(u) || [])[1];
+      if (md) { saveSettings({ ...loadSettings(), mode: md }); return false; }
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
       if (okAhead(n)) {
         ahead = n; saveSettings({ ...loadSettings(), ahead: n });

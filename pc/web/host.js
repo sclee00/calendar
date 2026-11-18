@@ -108,6 +108,7 @@
   async function ocrOf(url) {
     if (!ocrCache) ocrCache = (await store.get("ocr")) || {};
     if (ocrCache[url]) return ocrCache[url].sp;
+    if (window.__mode !== "normal") return null; // 빠른 모드: 새 그림은 읽지 않음
     if (ocrBroken || ocrFresh >= 8) return null;
     ocrFresh++;
     try {
@@ -369,6 +370,7 @@ async function checkNotices(parse, getText, state) {
   let settings = window.__settings || {};
   const okAhead = (n) => Number.isInteger(n) && n >= 1 && n <= 12;
   let ahead = okAhead(settings.ahead) ? settings.ahead : 1;
+  window.__mode = settings.mode === "normal" ? "normal" : "fast";
   const all = monthsAhead();
   let first = all.slice(0, ahead);
   const checked = new Set();
@@ -430,6 +432,8 @@ async function checkNotices(parse, getText, state) {
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list);
     } else if (u.startsWith("fishing://settings")) {
+      const md = (/mode=(fast|normal)/.exec(u) || [])[1];
+      if (md) { settings = { ...settings, mode: md }; store.put("settings", settings); window.__mode = md; return; }
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
       if (okAhead(n)) {
         ahead = n; settings = { ...settings, ahead: n }; store.put("settings", settings);
