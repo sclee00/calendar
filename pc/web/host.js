@@ -91,10 +91,14 @@
             var d = g.getImageData(0, 0, c.width, c.height), p = d.data;
             for (var j = 0; j < p.length; j += 4) { var v = 0.299 * p[j] + 0.587 * p[j + 1] + 0.114 * p[j + 2] > 150 ? 255 : 0; p[j] = p[j + 1] = p[j + 2] = v; }
             g.putImageData(d, 0, 0);
-            return w.recognize(o).then(function (a) { return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; }); });
+            // 먼저 원래 그림을 읽고, 어종 말이 안 보일 때만 흑백 그림을 한 번 더 읽는다 (시간 절약)
+          return w.recognize(o).then(function (a) {
+            if (/꾸미|쭈꾸|주꾸|갑오|문어|한치|오징어|광어|우럭|참돔|도미|농어|민어|삼치|방어|대구|우광|광우/.test(a.data.text.replace(/\s+/g, ""))) return a.data.text;
+            return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; });
+          });
           });
       });
-      var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과")); }, 90000); });
+      var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과(45초)")); }, 45000); });
       return Promise.race([run, limit]);
     };
   }

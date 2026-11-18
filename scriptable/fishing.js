@@ -117,10 +117,14 @@ function ocrEngine() {
           var d = g.getImageData(0, 0, c.width, c.height), p = d.data;
           for (var j = 0; j < p.length; j += 4) { var v = 0.299 * p[j] + 0.587 * p[j + 1] + 0.114 * p[j + 2] > 150 ? 255 : 0; p[j] = p[j + 1] = p[j + 2] = v; }
           g.putImageData(d, 0, 0);
-          return w.recognize(o).then(function (a) { return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; }); });
+          // 먼저 원래 그림을 읽고, 어종 말이 안 보일 때만 흑백 그림을 한 번 더 읽는다 (시간 절약)
+          return w.recognize(o).then(function (a) {
+            if (/꾸미|쭈꾸|주꾸|갑오|문어|한치|오징어|광어|우럭|참돔|도미|농어|민어|삼치|방어|대구|우광|광우/.test(a.data.text.replace(/\s+/g, ""))) return a.data.text;
+            return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; });
+          });
         });
     });
-    var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과")); }, 90000); });
+    var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과(45초)")); }, 45000); });
     return Promise.race([run, limit]);
   };
 }
@@ -476,24 +480,42 @@ async function makeParser() {
 const OCR_CACHE = fm.joinPath(DIR, "ocr.json");
 function makeOcr(evalJs) {
   let cache = {}; try { cache = JSON.parse(fm.readString(OCR_CACHE)) || {}; } catch (e) {}
-  let fresh = 0, broken = false;
-  return async (url) => {
-    if (cache[url]) return cache[url].sp;
-    if (!evalJs || broken || fresh >= 8) return null; // 한 번에 새 그림은 8장까지
+  for (const k in cache) if (k !== "_fail" && !(cache[k] && cache[k].ms)) delete cache[k]; // 첫 버전에서 저장한 결과는 다시 읽는다
+  const save = () => { try { fm.writeString(OCR_CACHE, JSON.stringify(cache)); } catch (e) {} };
+  // 실패하면 6시간 동안은 다시 시도하지 않는다 (확인이 매번 길어지지 않게)
+  const failRecent = cache._fail && Date.now() - cache._fail.ms < 6 * 3600e3;
+  let fresh = 0, broken = !!failRecent, spent = 0;
+  const stats = { read: 0, sp: { j: 0, f: 0, u: 0 }, err: failRecent ? cache._fail.err : "", skipped: 0 };
+  const fail = (err) => { broken = true; stats.err = err; cache._fail = { err, ms: Date.now(), at: kstIso() }; save(); console.log("OCR 실패: " + err); };
+  const f = async (url) => {
+    if (cache[url] && url !== "_fail") return cache[url].sp;
+    if (!evalJs) return null;
+    if (broken || fresh >= 6 || spent > 90e3) { stats.skipped++; return null; } // 한 번에 새 그림은 6장·90초까지
     fresh++;
+    const t0 = Date.now();
     try {
       const r = new Request(url); r.timeoutInterval = 20;
       const data = await r.load();
       const mime = /\.png/i.test(url) ? "image/png" : /\.gif/i.test(url) ? "image/gif" : /\.webp/i.test(url) ? "image/webp" : "image/jpeg";
       const text = await evalJs(`__ocrText(${JSON.stringify("data:" + mime + ";base64," + data.toBase64String())}).then(function(t){completion(String(t))},function(e){completion("!ERR "+(e&&e.message||e))})`);
-      if (typeof text !== "string" || text.startsWith("!ERR")) { broken = true; console.log("OCR 실패: " + text); return null; }
+      spent += Date.now() - t0;
+      if (typeof text !== "string" || text.startsWith("!ERR")) { fail(String(text || "응답 없음").replace(/^!ERR /, "")); return null; }
       const sp = ocrSpecies(text);
-      cache[url] = { sp, t: text.replace(/\s+/g, " ").slice(0, 160), at: kstIso() };
+      stats.read++; stats.sp[sp] = (stats.sp[sp] || 0) + 1;
+      delete cache._fail;
+      cache[url] = { sp, t: text.replace(/\s+/g, " ").slice(0, 160), ms: Date.now() - t0, at: kstIso() };
       const keys = Object.keys(cache); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((x) => delete cache[x]);
-      try { fm.writeString(OCR_CACHE, JSON.stringify(cache)); } catch (e) {}
+      save();
       return sp;
-    } catch (e) { return null; }
+    } catch (e) { spent += Date.now() - t0; fail("그림 받기 실패: " + (e.message || e)); return null; }
   };
+  // 확인 결과 문구에 붙일 요약
+  f.summary = () => {
+    if (!stats.read && !stats.err) return "";
+    if (stats.read) return `그림 속 어종 ${stats.read}장 읽음(쭈꾸미류 ${stats.sp.j}·물고기 ${stats.sp.f}·모름 ${stats.sp.u})` + (stats.err ? ` · 일부 실패: ${stats.err}` : "");
+    return `그림 속 어종 읽기 실패(6시간 뒤 다시 시도): ${stats.err}`;
+  };
+  return f;
 }
 
 function watchDays(cfg) {
@@ -937,6 +959,7 @@ async function main(wv, say) {
     old = data;
     await js(`__applySeats(${JSON.stringify(data)})`);
     let msg = errors.length ? `일부 사이트를 읽지 못했습니다: ${errors.join(" / ")}` : "";
+    const om = ocr.summary(); if (om) msg += (msg ? " · " : "") + om;
     // 새로 생긴 자리는 아이폰 알림으로도 (앱을 보고 있지 않아도 알림 센터에 남음)
     const newItems = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
     if (newItems.length) {
