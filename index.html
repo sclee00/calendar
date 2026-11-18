@@ -268,9 +268,9 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <small>빠른 모드는 그림(포스터)으로만 올라온 어종을 새로 읽지 않아 확인이 빨라요. 전에 읽어 둔 그림은 그대로 어종이 나와요. 보통 모드는 새 그림이 있으면 글자를 읽느라 그만큼 오래 걸려요.</small>
     </div></details>
     <details class="fold" id="fold-widget" hidden><summary>홈 화면 위젯 <small class="fs" id="sumWidget"></small></summary><div class="fbody">
-      <span style="flex-basis:100%">위젯 달력에 합산할 선사</span>
-      <div id="wSites" style="display:flex;flex-wrap:wrap;gap:6px 14px"></div>
-      <small style="flex-basis:100%">고른 선사의 배 가운데 자리가 남은 배 수를 날짜마다 보여 줘요. 위젯은 아이폰이 정한 때(대략 한 시간마다) 새로 그려져요.</small>
+      <span style="flex-basis:100%">위젯 달력에 합산할 배 <button type="button" id="wAll" class="mini">전체</button> <button type="button" id="wNone" class="mini">해제</button></span>
+      <div id="wSites" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%"></div>
+      <small style="flex-basis:100%">고른 배 가운데 자리가 남은 배 수를 날짜마다 보여 줘요. 위젯은 아이폰이 정한 때(대략 한 시간마다) 새로 그려져요.</small>
     </div></details>
     <details class="fold" id="fold-mine"><summary>내 예약 <small class="fs" id="sumMine"></small></summary><div class="fbody">
       <small style="flex-basis:100%">캘린더나 아래 배 목록에서 배를 꾹 누르면(PC는 오른쪽 클릭) 내 예약으로 표시·해제돼요. 내 예약 배가 출조 취소되면 알림, 출조 전날에도 알림을 보내요.</small>
@@ -689,12 +689,22 @@ if(IN_APP){
 }
 // 홈 화면 위젯에 합산할 선사 (아이폰 앱에서만)
 if(IN_APP&&!window.__isPC){
-  const WS=[["lukina","루키나"],["dy","동양낚시마트"],["khan","칸피싱"],["jeil","제일바다낚시"],["secret","시크릿 버스"]];
+  // 선사별로 묶어서 배를 중복 선택
+  const WS=[["luk","루키나"],["dy","동양낚시마트"],["khan","칸피싱"],["jeil","제일바다낚시"],["secret","시크릿 버스"]];
   const fw=document.getElementById("fold-widget"),box=document.getElementById("wSites");fw.hidden=false;
-  let on=new Set(Array.isArray(window.__wsites)&&window.__wsites.length?window.__wsites:WS.map(x=>x[0]));
-  const sum=()=>{document.getElementById("sumWidget").textContent=on.size===WS.length?"모든 선사":WS.filter(x=>on.has(x[0])).map(x=>x[1]).join("·")||"없음"};
-  WS.forEach(([id,lb])=>{const l=document.createElement("label");l.innerHTML=`<input type="checkbox"> ${lb}`;const c=l.firstChild;c.checked=on.has(id);
-    c.onchange=()=>{c.checked?on.add(id):on.delete(id);if(!on.size){on.add(id);c.checked=true}sum();location.href="fishing://settings?wsites="+[...on].join(",")};box.append(l)});
+  const ALL=BOATS.map(b=>b.name);
+  let on=new Set(Array.isArray(window.__wboats)&&window.__wboats.length?window.__wboats.filter(n=>ALL.includes(n)):ALL);
+  const boxes=[];
+  const sum=()=>{document.getElementById("sumWidget").textContent=on.size===ALL.length?"모든 배":on.size<=3?[...on].join("·"):`배 ${on.size}척`};
+  const save=()=>{sum();location.href="fishing://settings?wboats="+encodeURIComponent([...on].join("|"))};
+  WS.forEach(([u,lb])=>{const g=document.createElement("div");g.innerHTML=`<b style="font-size:12px;color:var(--mut,#6a7983)">${lb}</b>`;
+    const row=document.createElement("div");row.style.cssText="display:flex;flex-wrap:wrap;gap:4px 12px";
+    BOATS.filter(b=>b.u===u).forEach(b=>{const l=document.createElement("label");l.innerHTML=`<input type="checkbox"> ${b.name}`;const c=l.firstChild;c.checked=on.has(b.name);boxes.push([c,b.name]);
+      c.onchange=()=>{c.checked?on.add(b.name):on.delete(b.name);if(!on.size){on.add(b.name);c.checked=true}save()};row.append(l)});
+    g.append(row);box.append(g)});
+  const setAll=v=>{on=new Set(v?ALL:[]);boxes.forEach(([c,n])=>c.checked=on.has(n))};
+  document.getElementById("wAll").onclick=()=>{setAll(true);save()};
+  document.getElementById("wNone").onclick=()=>{setAll(false);sum();document.getElementById("sumWidget").textContent="배를 골라 주세요"};
   sum();
 }
 load(false);
