@@ -848,7 +848,8 @@ async function calendarWidget() {
   // 위젯에 합산할 배 (설정 → 홈 화면 위젯, 중복 선택). 고르지 않았으면 전부
   const pick = Array.isArray(settings.widgetBoats) && settings.widgetBoats.length ? settings.widgetBoats.filter((n) => KEEP.includes(n)) : KEEP;
   const allow = new Set(pick.length ? pick : KEEP);
-  const tag = allow.size >= KEEP.length ? "" : allow.size <= 2 ? " · " + [...allow].join("·") : ` · ${allow.size}척`;
+  // 위젯 위에 합산 중인 배 이름 한 줄 (전부면 '모든 배')
+  const names = allow.size >= KEEP.length ? "모든 배" : KEEP.filter((n) => allow.has(n)).join(" · ");
   const boatsOf = (MM) => Object.entries((MM && MM.boats) || {}).filter(([n]) => allow.has(n)).map(([, b]) => b);
   const mk = ymKey(ty, tm), M = (data && data.months && data.months[mk]) || { boats: {} };
   const L = daysIn(ty, tm);
@@ -866,7 +867,8 @@ async function calendarWidget() {
 
   if (fam === "small") { // 작은 위젯: 오늘부터 6일 목록
     w.setPadding(10, 12, 10, 12);
-    txt(w, "낚시배 빈자리" + tag, 12, C.head, true);
+    txt(w, "낚시배 빈자리", 12, C.head, true);
+    const nm = txt(w, names, 9, C.mute); nm.lineLimit = 1; nm.minimumScaleFactor = 0.7;
     w.addSpacer(4);
     for (let i = 0; i < 6; i++) {
       const dt = new Date(Date.UTC(ty, tm - 1, td + i)), y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
@@ -888,12 +890,13 @@ async function calendarWidget() {
 
   const big = fam !== "medium";
   const first = new Date(Date.UTC(ty, tm - 1, 1)).getUTCDay(), rows = Math.ceil((first + L) / 7);
-  const cw = 44, ch = big ? Math.min(54, Math.floor(280 / rows)) : Math.floor(108 / rows);
+  const cw = 44, ch = big ? Math.min(54, Math.floor(280 / rows)) : Math.floor(98 / rows);
   w.setPadding(big ? 12 : 8, 10, big ? 10 : 6, 10);
   const head = w.addStack(); head.layoutHorizontally(); head.centerAlignContent();
-  txt(head, `${tm}월 빈자리${tag}`, big ? 15 : 12, C.head, true);
+  txt(head, `${tm}월 빈자리`, big ? 15 : 12, C.head, true);
   head.addSpacer();
   if (stamp) txt(head, stamp + " 기준", big ? 9 : 8, C.mute);
+  const nm = txt(w, names, big ? 10 : 8, C.ink); nm.lineLimit = big ? 2 : 1; nm.minimumScaleFactor = 0.7;
   w.addSpacer(big ? 6 : 2);
   const wk = w.addStack(); wk.layoutHorizontally();
   WD.forEach((t, i) => { const c = wk.addStack(); c.size = new Size(cw, big ? 14 : 11); c.centerAlignContent(); const x = txt(c, t, big ? 10 : 8, i === 0 ? C.sun : i === 6 ? C.sat : C.mute, true); x.centerAlignText(); });
