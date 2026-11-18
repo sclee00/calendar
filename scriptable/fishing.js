@@ -845,10 +845,16 @@ async function calendarWidget() {
   const settings = loadSettings();
   const mine = new Set((settings.mine || []).map((k) => { const [mk, , d] = k.split("|"); return `${mk}|${+d}`; }));
   const [ty, tm, td] = todayKST();
+  // 위젯에 합산할 선사 (설정 → 홈 화면 위젯). 고르지 않았으면 전부
+  const pick = Array.isArray(settings.widgetSites) && settings.widgetSites.length ? settings.widgetSites : SITES.map((s) => s.id);
+  const allow = new Set(SITES.filter((s) => pick.includes(s.id)).flatMap((s) => s.boats));
+  const SHORT = { lukina: "루키나", dy: "동양", khan: "칸", jeil: "제일", secret: "시크릿" };
+  const tag = pick.length >= SITES.length ? "" : " · " + SITES.filter((s) => pick.includes(s.id)).map((s) => SHORT[s.id] || s.id).join("·");
+  const boatsOf = (MM) => Object.entries((MM && MM.boats) || {}).filter(([n]) => allow.has(n)).map(([, b]) => b);
   const mk = ymKey(ty, tm), M = (data && data.months && data.months[mk]) || { boats: {} };
   const L = daysIn(ty, tm);
   const cnt = Array(L + 1).fill(0), any = Array(L + 1).fill(false);
-  for (const b of Object.values(M.boats || {})) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1]++; });
+  for (const b of boatsOf(M)) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1]++; });
   const fam = config.widgetFamily || "large";
   const C = { bg: "#ffffff", ink: "#1d2b36", mute: "#9aa7b1", sun: "#d64545", sat: "#2f6fde", open: "#1f9d55", today: "#e3eefb", gold: "#e3a21a", head: "#1f5f99" };
   const w = new ListWidget();
@@ -861,13 +867,13 @@ async function calendarWidget() {
 
   if (fam === "small") { // 작은 위젯: 오늘부터 6일 목록
     w.setPadding(10, 12, 10, 12);
-    txt(w, "낚시배 빈자리", 12, C.head, true);
+    txt(w, "낚시배 빈자리" + tag, 12, C.head, true);
     w.addSpacer(4);
     for (let i = 0; i < 6; i++) {
       const dt = new Date(Date.UTC(ty, tm - 1, td + i)), y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
       const MM = (data && data.months && data.months[ymKey(y, m)]) || { boats: {} };
       let n = 0, seen = false;
-      for (const b of Object.values(MM.boats || {})) { const v = (b.s || [])[d - 1]; if (v !== null && v !== undefined) seen = true; if (typeof v === "number" && v > 0) n++; }
+      for (const b of boatsOf(MM)) { const v = (b.s || [])[d - 1]; if (v !== null && v !== undefined) seen = true; if (typeof v === "number" && v > 0) n++; }
       const r = w.addStack(); r.layoutHorizontally(); r.centerAlignContent();
       const wd = dt.getUTCDay();
       txt(r, `${m}/${d} ${WD[wd]}`, 12, wd === 0 ? C.sun : wd === 6 ? C.sat : C.ink, i === 0);
@@ -886,7 +892,7 @@ async function calendarWidget() {
   const cw = 44, ch = big ? Math.min(54, Math.floor(280 / rows)) : Math.floor(108 / rows);
   w.setPadding(big ? 12 : 8, 10, big ? 10 : 6, 10);
   const head = w.addStack(); head.layoutHorizontally(); head.centerAlignContent();
-  txt(head, `${tm}월 낚시배 빈자리`, big ? 15 : 12, C.head, true);
+  txt(head, `${tm}월 빈자리${tag}`, big ? 15 : 12, C.head, true);
   head.addSpacer();
   if (stamp) txt(head, stamp + " 기준", big ? 9 : 8, C.mute);
   w.addSpacer(big ? 6 : 2);
@@ -1012,7 +1018,7 @@ async function main(wv, say) {
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
-  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
+  const inject = `<script>window.__inScriptable=true;window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wsites=${JSON.stringify(settings.widgetSites || null)};window.__watch=${JSON.stringify(settings.watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(settings.mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -1140,6 +1146,8 @@ async function main(wv, say) {
       want(list); return false;
     }
     if (u.startsWith("fishing://settings")) { // 설정: 확인 기간·방식 변경
+      const ws = (/wsites=([a-z,]*)/.exec(u) || [])[1];
+      if (ws !== undefined) { const list = ws.split(",").filter((x) => SITES.some((s) => s.id === x)); saveSettings({ ...loadSettings(), widgetSites: list.length ? list : null }); return false; }
       const md = (/mode=(fast|normal)/.exec(u) || [])[1];
       if (md) { saveSettings({ ...loadSettings(), mode: md }); return false; }
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
