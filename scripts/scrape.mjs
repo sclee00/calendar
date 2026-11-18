@@ -260,6 +260,13 @@ for (const k of [...allKeys].sort()) {
       if (of.includes("1")) opened[name] = of;
     }
   }
+  // 아이폰·PC에서 더한 선사의 배(이 수집기가 모르는 배)는 올려 준 값을 그대로 둔다
+  const known = new Set(SITES.flatMap((x) => x.boats));
+  for (const name of Object.keys(prev.boats || {})) if (!known.has(name)) {
+    boats[name] = prev.boats[name];
+    if (prev.reopen?.[name]) reopen[name] = prev.reopen[name];
+    if (prev.opened?.[name]) opened[name] = prev.opened[name];
+  }
   // 아직 예약이 안 열린 달도 '확인했음'으로 남겨 둔다 (나중에 열리면 '새로 열림'으로 표시)
   if (Object.keys(boats).length || Object.values(results).some(Boolean)) months[k] = { boats, reopen, opened };
 }

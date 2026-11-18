@@ -267,6 +267,19 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <select id="modeSel" aria-label="확인 방식"><option value="fast">빠른 모드 — 그림 속 어종은 읽지 않음</option><option value="normal">보통 모드 — 그림 속 어종도 읽음(OCR)</option></select>
     <small>빠른 모드는 그림(포스터)으로만 올라온 어종을 새로 읽지 않아 확인이 빨라요. 전에 읽어 둔 그림은 그대로 어종이 나와요. 보통 모드는 새 그림이 있으면 글자를 읽느라 그만큼 오래 걸려요.</small>
     </div></details>
+    <details class="fold" id="fold-sites" hidden><summary>선사 관리 <small class="fs" id="sumSites"></small></summary><div class="fbody">
+      <div id="siteList" style="flex-basis:100%;display:flex;flex-direction:column;gap:10px"></div>
+      <div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <input id="siteUrl" type="url" inputmode="url" autocapitalize="off" placeholder="선사 예약 사이트 주소 (예: ○○.sunsang24.com)" style="flex:1;min-width:210px;font:inherit;padding:6px 8px;border:1px solid var(--line,#ccd5dc);border-radius:8px">
+        <button id="siteFind" type="button" class="sbtn">배 찾기</button>
+      </div>
+      <div id="siteFound" style="flex-basis:100%"></div>
+      <div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="siteSave" type="button" class="sbtn" disabled>바꾼 내용 저장하고 다시 확인</button>
+        <button id="siteReset" type="button" class="mini">기본 선사로 되돌리기</button>
+      </div>
+      <small style="flex-basis:100%">선상24(○○.sunsang24.com) 예약 사이트나, 칸피싱·제일바다낚시와 같은 예약 프로그램(주소에 index.php?mid=bk)을 쓰는 선사를 더할 수 있어요. 주소를 넣고 '배 찾기'를 누르면 그 사이트의 배를 찾아 보여 줘요.</small>
+    </div></details>
     <details class="fold" id="fold-widget" hidden><summary>홈 화면 위젯 <small class="fs" id="sumWidget"></small></summary><div class="fbody">
       <span style="flex-basis:100%">위젯 달력에 합산할 배 <button type="button" id="wAll" class="mini">전체</button> <button type="button" id="wNone" class="mini">해제</button></span>
       <div id="wSites" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%"></div>
@@ -320,19 +333,31 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <script>
 const TIDE={"2026-10":[["12물",802],["13물",700],["조금",573],["무시",454],["1물",306],["2물",461],["3물",584],["4물",709],["5물",801],["6물",857],["7물",886],["8물",883],["9물",852],["10물",801],["11물",733],["12물",648],["13물",546],["조금",432],["무시",327],["1물",195],["2물",310],["3물",413],["4물",548],["5물",685],["6물",790],["7물",878],["8물",922],["9물",923],["10물",884],["11물",810],["12물",708]],"2026-11":[["13물",590],["조금",488],["무시",357],["1물",466],["2물",533],["3물",641],["4물",744],["5물",808],["7물",834],["8물",830],["9물",805],["10물",767],["11물",718],["12물",659],["13물",588],["조금",507],["무시",424],["1물",358],["2물",288],["3물",382],["4물",509],["5물",655],["6물",777],["7물",864],["8물",909],["9물",916],["10물",890],["11물",837],["12물",760],["13물",666]],"2026-12":[["조금",566],["무시",481],["1물",442],["2물",494],["3물",573],["4물",648],["5물",704],["6물",738],["7물",750],["8물",748],["9물",737],["10물",720],["11물",694],["12물",659],["13물",610],["조금",544],["무시",467],["1물",418],["2물",418],["3물",493],["4물",603],["5물",713],["6물",805],["7물",871],["8물",910],["9물",919],["10물",898],["11물",845],["12물",755],["13물",639],["조금",547]],"2027-01":[["무시",486],["1물",452],["2물",465],["3물",516],["4물",579],["5물",635],["6물",679],["7물",712],["8물",736],["9물",752],["10물",755],["11물",742],["12물",706],["13물",641],["조금",575],["무시",520],["1물",480],["2물",472],["3물",526],["4물",632],["5물",750],["6물",855],["7물",931],["8물",967],["9물",957],["10물",900],["11물",801],["12물",718],["13물",630],["조금",526],["무시",423]],"2027-02":[["1물",365],["2물",390],["3물",469],["4물",558],["5물",637],["6물",704],["7물",756],["8물",792],["9물",808],["10물",797],["11물",755],["12물",710],["13물",671],["조금",604],["무시",516],["1물",443],["2물",463],["3물",582],["4물",731],["5물",860],["6물",945],["7물",977],["8물",955],["9물",891],["10물",850],["11물",778],["12물",679],["13물",558]],"2027-03":[["조금",424],["무시",312],["1물",299],["2물",387],["3물",499],["4물",604],["5물",692],["7물",760],["8물",804],["9물",817],["10물",807],["11물",812],["12물",788],["13물",730],["조금",638],["무시",522],["1물",424],["2물",443],["3물",573],["4물",720],["5물",837],["6물",902],["7물",913],["8물",914],["9물",903],["10물",859],["11물",787],["12물",692],["13물",576],["조금",446],["무시",320]],"2027-04":[["1물",264],["2물",333],["3물",450],["4물",564],["5물",663],["6물",741],["7물",807],["8물",817],["9물",863],["10물",860],["11물",822],["12물",751],["13물",649],["조금",533],["무시",449],["1물",463],["2물",577],["3물",695],["4물",779],["5물",841],["6물",878],["7물",828],["8물",865],["9물",824],["10물",763],["11물",687],["12물",595],["13물",491],["조금",386],["무시",310]],"2027-05":[["1물",321],["2물",420],["3물",529],["4물",633],["5물",746],["7물",827],["8물",873],["9물",797],["10물",876],["11물",838],["12물",774],["13물",688],["조금",592],["무시",515],["1물",498],["2물",560],["3물",629],["4물",719],["5물",780],["6물",808],["7물",807],["8물",705],["9물",773],["10물",737],["11물",691],["12물",634],["13물",566],["조금",490],["무시",415],["1물",377],["2물",417]],"2027-06":[["3물",502],["4물",624],["5물",732],["6물",815],["7물",868],["8물",780],["9물",892],["10물",877],["11물",835],["12물",767],["13물",678],["조금",578],["무시",521],["1물",525],["2물",575],["3물",635],["4물",687],["5물",722],["6물",740],["7물",744],["8물",653],["9물",737],["10물",723],["11물",697],["12물",658],["13물",599],["조금",522],["무시",465],["1물",437],["2물",499]],"2027-07":[["3물",589],["4물",694],["5물",789],["7물",867],["8물",800],["9물",937],["10물",944],["11물",915],["12물",845],["13물",739],["조금",617],["무시",515],["1물",435],["2물",487],["3물",530],["4물",594],["5물",654],["6물",702],["7물",736],["8물",675],["9물",766],["10물",773],["11물",762],["12물",730],["13물",672],["조금",602],["무시",524],["1물",479],["2물",402],["3물",537],["4물",651]],"2027-08":[["5물",778],["7물",890],["8물",966],["9물",916],["10물",996],["11물",956],["12물",867],["13물",747],["조금",623],["무시",490],["1물",359],["2물",390],["3물",434],["4물",524],["5물",614],["6물",688],["7물",743],["8물",780],["9물",750],["10물",806],["11물",794],["12물",754],["13물",706],["조금",632],["무시",544],["1물",462],["2물",344],["3물",493],["4물",633],["5물",786],["6물",907]],"2027-09":[["7물",981],["8물",956],["9물",984],["10물",923],["11물",834],["12물",731],["13물",604],["조금",464],["무시",345],["1물",227],["2물",358],["3물",462],["4물",569],["5물",660],["6물",728],["7물",775],["8물",783],["9물",808],["10물",811],["11물",787],["12물",735],["13물",653],["조금",546],["무시",445],["1물",317],["2물",484],["3물",626],["4물",771],["5물",875],["7물",933]],"2027-10":[["8물",956],["9물",948],["10물",901],["11물",823],["12물",720],["13물",599],["조금",462],["무시",335],["1물",199],["2물",298],["3물",387],["4물",497],["5물",612],["6물",705],["7물",775],["8물",829],["9물",855],["10물",852],["11물",817],["12물",755],["13물",666],["조금",559],["무시",469],["1물",353],["2물",490],["3물",593],["4물",719],["5물",826],["7물",897],["8물",920],["9물",903]]};
 const MONTHS=Object.keys(TIDE);
-const ORDER=[
+const DEFAULT_ORDER=[
  ["루키나 2호","luk","루2"],["루키나호","luk","루1"],["팀에프원","dy","에원"],["팀에프투","dy","에투"],["고트호","dy","고트"],
  ["와이파이호","khan","와이"],["욜로호","khan","욜로"],["시크릿호","khan","시크"],["베스트1호","khan","베1"],["베스트3호","khan","베3"],["제트호","khan","제트"],["왕만두호","khan","왕만"],
  ["모비딕호","jeil","모비"],["마루호","jeil","마루"],["스모키호","jeil","스모"],["로또호","jeil","로또"],
  ["전국 시크릿 블랙","secret","블랙"],["전국 시크릿 레드","secret","레드"],["전국 시크릿 3호","secret","3호"]]; // 시크릿 피싱 클럽: 낚시 버스(버스 아이콘)
-const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab,bus:u==="secret"}));
-const U={luk:"https://lukina.sunsang24.com/ship/schedule_fleet",dy:"https://dyfishing.sunsang24.com/ship/schedule_fleet",khan:"https://khanfishing.com/index.php?mid=bk",jeil:"https://jnaksi.com/index.php?mid=bk",secret:"https://secretbus.thefishing.kr/index.php?mid=bk"};
+// 기본 선사 (아이폰 앱·PC 버전에서 선사를 더하거나 빼면 그 목록(window.__sites / 저장된 설정)을 쓴다)
+const DEFAULT_SITES=[
+ {id:"lukina",label:"루키나",kind:"ss",host:"lukina.sunsang24.com"},{id:"dy",label:"동양낚시마트",kind:"ss",host:"dyfishing.sunsang24.com"},
+ {id:"khan",label:"칸피싱",kind:"tf",step:8,host:"khanfishing.com"},{id:"jeil",label:"제일바다낚시",kind:"tf",step:4,host:"jnaksi.com"},
+ {id:"secret",label:"시크릿 버스",kind:"bus",step:8,host:"secretbus.thefishing.kr"}];
+const UID=id=>id==="lukina"?"luk":id; // 화면 안에서 쓰는 선사 이름표
+const abOf=n=>{const t=String(n).replace(/\s+/g,"").replace(/호$/,"");return t.slice(0,2)||"배"};
+DEFAULT_SITES.forEach(x=>{x.boats=DEFAULT_ORDER.filter(o=>o[1]===UID(x.id)).map(o=>({name:o[0],ab:o[2]}))});
+const SITES_IN=(()=>{const a=window.__sites||(window.__settings&&window.__settings.sites);return Array.isArray(a)&&a.some(x=>x&&x.host&&x.boats&&x.boats.length)?a.filter(x=>x&&x.host&&x.boats&&x.boats.length):null})();
+const SITE_DEFS=(SITES_IN||DEFAULT_SITES).map(x=>({...x,boats:x.boats.map(b=>typeof b==="string"?{name:b}:b)}));
+const ORDER=SITE_DEFS.flatMap(x=>x.boats.map(b=>{const d=DEFAULT_ORDER.find(o=>o[0]===b.name);return[b.name,UID(x.id),b.ab||(d&&d[2])||abOf(b.name)]}));
+const KIND={},U={},HOST={},SITE_LABEL={};
+SITE_DEFS.forEach(x=>{const u=UID(x.id);KIND[u]=x.kind;HOST[u]="https://"+x.host;SITE_LABEL[u]=x.label||x.host;U[u]=x.kind==="ss"?`https://${x.host}/ship/schedule_fleet`:`https://${x.host}/index.php?mid=bk`});
+const BOATS=ORDER.map(([name,u,ab],id)=>({id,name,u,ab,bus:KIND[u]==="bus"}));
 // 고른 날짜·배로 바로 가는 주소 (선상24: 그 일정의 예약 화면, 없으면 그 달 일정표)
-const HOST={luk:"https://lukina.sunsang24.com",dy:"https://dyfishing.sunsang24.com",khan:"https://khanfishing.com",jeil:"https://jnaksi.com",secret:"https://secretbus.thefishing.kr"};
 const PA={"와이파이호":5264,"욜로호":5725,"시크릿호":5342,"베스트1호":5339,"베스트3호":5340,"제트호":5341,"왕만두호":5283,"모비딕호":4465,"마루호":6233,"스모키호":6232,"로또호":6362,"전국 시크릿 블랙":3199,"전국 시크릿 레드":3201,"전국 시크릿 3호":6136}; // 더피싱 배 번호
+SITE_DEFS.forEach(x=>x.boats.forEach(b=>{if(b.pa&&!PA[b.name])PA[b.name]=b.pa}));
 function bookUrl(b,mk,d,s){
   const M=monthBoats(mk)[b.name]||{},no=M.no&&M.no[d-1];
-  if(b.u==="luk"||b.u==="dy"){
+  if(KIND[b.u]==="ss"){
     if(no&&s==="open")return `${HOST[b.u]}/mypage/reservation_ready/${no}`;
     return `${U[b.u]}/${mk.replace("-","")}`;
   }
@@ -359,7 +384,9 @@ const now=new Date();const TODAY=`${now.getFullYear()}-${pad(now.getMonth()+1)}-
 let _onSaved=null;try{_onSaved=JSON.parse(localStorage.getItem("boatsOn")||"null")}catch(e){}
 let _spSaved=null;try{_spSaved=JSON.parse(localStorage.getItem("spFilter")||"null")}catch(e){}
 const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice(0,7))),day:now.getDate(),only:false,sp:new Set(["j","f","u"]),seats:{},status:null,loaded:false};
-if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.name)).map(b=>b.id));
+let _offSaved=null;try{_offSaved=JSON.parse(localStorage.getItem("boatsOff")||"null")}catch(e){}
+if(Array.isArray(_offSaved))st.on=new Set(BOATS.filter(b=>!_offSaved.includes(b.name)).map(b=>b.id));
+else if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.name)||!DEFAULT_ORDER.some(o=>o[0]===b.name)).map(b=>b.id));
 if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
 function badge(b,cls,sp,title,style="",attrs=""){
@@ -412,7 +439,6 @@ function spRow(){
     b.onclick=()=>{st.sp.has(k)?st.sp.delete(k):st.sp.add(k);if(!st.sp.size)st.sp.add(k);try{localStorage.setItem("spFilter",JSON.stringify([...st.sp]))}catch(e){}render()};el.append(b)});
 }
 // 사이트별 보이기/숨기기: 그 사이트 배를 한꺼번에 켜고 끔 (배 필터와 같이 저장)
-const SITE_LABEL={luk:"루키나",dy:"동양낚시마트",khan:"칸피싱",jeil:"제일바다낚시",secret:"시크릿 버스"};
 function siteRow(){
   const el=document.getElementById("siteKey");if(!el)return;el.innerHTML="<span>사이트</span>";
   Object.keys(SITE_LABEL).forEach(u=>{const bs=BOATS.filter(b=>b.u===u);if(!bs.length)return;
@@ -437,7 +463,9 @@ function keyRow(){spRow();siteRow();
   }
   document.getElementById("onlyOpen").setAttribute("aria-pressed",st.only);
 }
-function saveOn(){try{localStorage.setItem("boatsOn",JSON.stringify(BOATS.filter(b=>st.on.has(b.id)).map(b=>b.name)))}catch(e){}}
+function saveOn(){try{const off=BOATS.filter(b=>!st.on.has(b.id)).map(b=>b.name);let prev=[];try{prev=JSON.parse(localStorage.getItem("boatsOff")||"[]")||[]}catch(e){}
+  // 지금 목록에 없는 배(선사를 뺀 경우)의 숨김 표시는 남겨 둔다
+  localStorage.setItem("boatsOff",JSON.stringify([...new Set([...off,...prev.filter(n=>!BOATS.some(b=>b.name===n))])]))}catch(e){}}
 // ── 날씨: 인천(연안부두) 예보 — Open-Meteo(무료, 키 없음). 1시간 동안 이 기기에 저장해 둠 ──
 let SHOW_WX=true;try{SHOW_WX=localStorage.getItem("showWx")!=="0"}catch(e){}
 let WX={};
@@ -687,10 +715,51 @@ if(IN_APP){
   const ms=document.getElementById("modeSel");ms.value=window.__mode==="normal"?"normal":"fast";
   ms.onchange=()=>{window.__mode=ms.value;foldSums();location.href="fishing://settings?mode="+ms.value};
 }
+// 선사 관리 (아이폰 앱·PC 버전): 선사 더하기·빼기, 선사별로 볼 배 고르기
+if(IN_APP){
+  const fs=document.getElementById("fold-sites");fs.hidden=false;
+  let work=SITE_DEFS.map(x=>({...x,boats:x.boats.map(b=>({...b}))}));
+  const list=document.getElementById("siteList"),found=document.getElementById("siteFound"),save=document.getElementById("siteSave");
+  const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const dirty=()=>{save.disabled=false};
+  const sum=()=>{document.getElementById("sumSites").textContent=`${work.length}곳 · 배 ${work.reduce((a,x)=>a+x.boats.length,0)}척`};
+  const draw=()=>{list.innerHTML="";work.forEach((x,i)=>{const d=document.createElement("div");
+    d.innerHTML=`<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>${esc(x.label)}</b><small class="muted">${esc(x.host)}</small><button type="button" class="mini" data-a="re">배 다시 찾기</button><button type="button" class="mini" data-a="del" style="color:#c0392b">빼기</button></div>
+      <div style="font-size:13px">${x.boats.map(b=>esc(b.name)).join(" · ")}</div>`;
+    d.querySelector('[data-a="del"]').onclick=()=>{if(work.length<=1)return;work.splice(i,1);draw();dirty()};
+    d.querySelector('[data-a="re"]').onclick=()=>{document.getElementById("siteUrl").value=x.host;find()};
+    list.append(d)});sum()};
+  const find=()=>{const v=document.getElementById("siteUrl").value.trim();if(!v)return;found.innerHTML='<small class="muted">배를 찾는 중…</small>';location.href="fishing://sites?find="+encodeURIComponent(v)};
+  document.getElementById("siteFind").onclick=find;
+  document.getElementById("siteUrl").onkeydown=e=>{if(e.key==="Enter")find()};
+  window.__sitesFound=r=>{
+    if(!r||!r.ok){found.innerHTML=`<small style="color:#c0392b">${esc((r&&r.error)||"찾지 못했어요")}</small>`;return}
+    const cur=work.find(x=>x.host===r.host),have=new Set(cur?cur.boats.map(b=>b.name):[]);
+    found.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0"><span>선사 이름</span><input id="fLabel" value="${esc(cur?cur.label:r.label)}" style="font:inherit;padding:4px 6px;border:1px solid var(--line,#ccd5dc);border-radius:6px;width:10em"><small class="muted">${esc(r.host)} · ${r.kind==="ss"?"선상24":"예약 목록"}</small></div>
+      <div id="fBoats" style="display:flex;flex-wrap:wrap;gap:4px 12px"></div>
+      <div style="margin-top:6px"><button type="button" class="sbtn" id="fAdd">${cur?"이 선사의 배 바꾸기":"이 선사 더하기"}</button> <button type="button" class="mini" id="fCancel">취소</button></div>`;
+    const fb=found.querySelector("#fBoats");
+    r.boats.forEach(b=>{const l=document.createElement("label");const t=!!b.taken;
+      l.innerHTML=`<input type="checkbox"${t?" disabled":""}> ${esc(b.name)}${t?` <small class="muted">(${esc(b.taken)}에 있음)</small>`:""}`;
+      l.firstChild.checked=!t&&(cur?have.has(b.name):!/공지|주차|안내|이벤트|예약/.test(b.name));l.firstChild.dataset.name=b.name;fb.append(l)});
+    found.querySelector("#fCancel").onclick=()=>{found.innerHTML=""};
+    found.querySelector("#fAdd").onclick=()=>{
+      const pick=[...fb.querySelectorAll("input:checked")].map(c=>r.boats.find(b=>b.name===c.dataset.name));
+      if(!pick.length){found.querySelector("#fAdd").textContent="배를 하나 이상 골라 주세요";return}
+      const old=cur?cur.boats:[],boats=pick.map(b=>{const o=old.find(x=>x.name===b.name);return{name:b.name,ab:(o&&o.ab)||abOf(b.name),pa:b.pa||(o&&o.pa)||0}});
+      const label=(found.querySelector("#fLabel").value||r.label||r.host).trim().slice(0,20);
+      if(cur){cur.boats=boats;cur.label=label}else work.push({id:"s"+Date.now().toString(36),label,kind:r.kind,host:r.host,step:r.step,boats});
+      found.innerHTML="";document.getElementById("siteUrl").value="";draw();dirty()};
+  };
+  save.onclick=()=>{location.href="fishing://sites?save="+encodeURIComponent(JSON.stringify(work))};
+  const rs=document.getElementById("siteReset");let rsArm=false;
+  rs.onclick=()=>{if(!rsArm){rsArm=true;rs.textContent="한 번 더 누르면 기본 선사 다섯 곳으로 되돌려요";setTimeout(()=>{rsArm=false;rs.textContent="기본 선사로 되돌리기"},4000);return}location.href="fishing://sites?save=null"};
+  draw();
+}
 // 홈 화면 위젯에 합산할 선사 (아이폰 앱에서만)
 if(IN_APP&&!window.__isPC){
   // 선사별로 묶어서 배를 중복 선택
-  const WS=[["luk","루키나"],["dy","동양낚시마트"],["khan","칸피싱"],["jeil","제일바다낚시"],["secret","시크릿 버스"]];
+  const WS=Object.entries(SITE_LABEL);
   const fw=document.getElementById("fold-widget"),box=document.getElementById("wSites");fw.hidden=false;
   const ALL=BOATS.map(b=>b.name);
   let on=new Set(Array.isArray(window.__wboats)&&window.__wboats.length?window.__wboats.filter(n=>ALL.includes(n)):ALL);

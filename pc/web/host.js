@@ -5,14 +5,28 @@
 // 빈자리 알림을 켜면, 이 탭이 열려 있는 동안만 정해 둔 간격으로 조건에 맞는 날짜를 확인한다.
 (function () {
   "use strict";
-  const SITES = [
-    { id: "lukina", kind: "ss", host: "lukina.sunsang24.com", boats: ["루키나 2호", "루키나호"] },
-    { id: "dy", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
-    { id: "khan", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
-    { id: "jeil", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
-    { id: "secret", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
+  const DEFAULT_SITES = [
+    { id: "lukina", label: "루키나", kind: "ss", host: "lukina.sunsang24.com", boats: ["루키나 2호", "루키나호"] },
+    { id: "dy", label: "동양낚시마트", kind: "ss", host: "dyfishing.sunsang24.com", boats: ["팀에프원", "팀에프투", "고트호"] },
+    { id: "khan", label: "칸피싱", kind: "tf", step: 8, host: "khanfishing.com", boats: ["와이파이호", "욜로호", "시크릿호", "베스트1호", "베스트3호", "제트호", "왕만두호"] },
+    { id: "jeil", label: "제일바다낚시", kind: "tf", step: 4, host: "jnaksi.com", boats: ["모비딕호", "마루호", "스모키호", "로또호"] },
+    { id: "secret", label: "시크릿 버스", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
-  const KEEP = SITES.flatMap((s) => s.boats);
+  let SITES = [], KEEP = [], NOTICE_SITES = [];
+  // 선사 목록 적용: boats는 이름 목록(SITES[].boats)과 자세한 정보(SITES[].info: 이름·아이콘 글자·배 번호)로 나눠 둔다
+  function applySites(list) {
+    const ok = Array.isArray(list) && list.some((x) => x && x.host && Array.isArray(x.boats) && x.boats.length);
+    const src = ok ? list.filter((x) => x && x.host && Array.isArray(x.boats) && x.boats.length) : DEFAULT_SITES;
+    SITES = src.map((x) => {
+      const info = x.boats.map((b) => (typeof b === "string" ? { name: b } : b)).filter((b) => b && b.name);
+      return { id: x.id, label: x.label || x.host, kind: x.kind === "ss" || x.kind === "bus" ? x.kind : "tf", host: x.host, step: x.step || (x.kind === "ss" ? undefined : 4), info, boats: info.map((b) => b.name) };
+    });
+    KEEP = SITES.flatMap((x) => x.boats);
+    NOTICE_SITES = SITES.map((x) => x.kind === "ss"
+      ? { id: x.id, label: x.label, kind: "ss", list: `https://${x.host}/ship/event_list` }
+      : { id: x.id, label: x.label, kind: "tf", home: `https://${x.host}/` });
+  }
+  applySites(window.__settings && window.__settings.sites);
   const PARSE_V = 10; // 읽는 규칙이 바뀌면 올림
   const pad = (n) => String(n).padStart(2, "0");
   const todayKST = () => { const t = new Date(Date.now() + 9 * 3600e3); return [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()]; };
@@ -39,7 +53,7 @@
 
   // 프로그램이 대신 받아 오는 선사 페이지 (사이트마다 요청은 하나씩, 간격은 프로그램이 지킴)
   async function get(url) {
-    const r = await fetch("/api/fetch?url=" + encodeURIComponent(url), { cache: "no-store" });
+    const r = await fetch("/api/fetch?url=" + encodeURIComponent(url), { cache: "no-store", headers: { "X-Fishing": "1" } });
     const t = await r.text();
     if (!r.ok) throw new Error(t || "HTTP " + r.status);
     return t;
@@ -112,7 +126,7 @@
     if (ocrBroken || ocrFresh >= 8) return null;
     ocrFresh++;
     try {
-      const r = await fetch("/api/img?url=" + encodeURIComponent(url), { cache: "no-store" });
+      const r = await fetch("/api/img?url=" + encodeURIComponent(url), { cache: "no-store", headers: { "X-Fishing": "1" } });
       if (!r.ok) return null;
       const src = URL.createObjectURL(await r.blob());
       let text;
@@ -279,13 +293,7 @@
   }
 
 // ── 선사 공지사항: 앱을 열 때 확인해서 새 공지가 있으면 알림 (처음 한 번은 지금 공지만 기억) ──
-const NOTICE_SITES = [
-  { id: "lukina", label: "루키나", kind: "ss", list: "https://lukina.sunsang24.com/ship/event_list" },
-  { id: "dy", label: "동양낚시마트", kind: "ss", list: "https://dyfishing.sunsang24.com/ship/event_list" },
-  { id: "khan", label: "칸피싱", kind: "tf", home: "https://khanfishing.com/" },
-  { id: "jeil", label: "제일바다낚시", kind: "tf", home: "https://jnaksi.com/" },
-  { id: "secret", label: "시크릿 버스", kind: "tf", home: "https://secretbus.thefishing.kr/" },
-];
+// (공지사항을 볼 선사 목록 NOTICE_SITES는 applySites가 선사 목록에서 만든다)
 // 페이지 안(DOM)에서 쓰는 분석기. kind: ss(선상24 공지 목록) · home(첫 화면에서 공지 게시판 찾기) · board(게시판 글 목록)
 function noticeParse(kind, html, base) {
   var doc = new DOMParser().parseFromString(html, "text/html");
@@ -425,8 +433,68 @@ async function checkNotices(parse, getText, state) {
   const ymOf = (u) => { const m = /[?&]ym=(\d{4})-(\d{2})/.exec(u); return m ? [+m[1], +m[2]] : null; };
 
   // 캘린더 화면이 보내는 요청 (아이폰 버전의 fishing:// 주소를 그대로 받음)
+  function fishFind(kind, html) {
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    var clean = function (t) { return String(t || "").replace(/\s+/g, " ").trim(); };
+    var out = {}, order = [];
+    var add = function (n, pa) { n = clean(n).replace(/\s*\(.*$/, ""); if (!n || n.length > 20) return ""; if (!out[n]) { out[n] = { name: n }; order.push(n); } if (pa && !out[n].pa) out[n].pa = pa; return n; };
+    if (kind === "ss") {
+      doc.querySelectorAll('table[class^="ship_unit"] .ship_info .title').forEach(function (e) { add(e.textContent); });
+    } else {
+      doc.querySelectorAll("select option").forEach(function (o) {
+        var v = o.getAttribute("value") || "", t = clean(o.textContent);
+        if (!/^\d{2,}$/.test(v) || !/[가-힣A-Za-z]/.test(t)) return;
+        var base = t.replace(/\s*(오전|오후|야간|새벽|주간|1부|2부)$/, "");
+        var key = add(base, t === base ? +v : 0);
+        if (key && !out[key].pa && !out[key].pa2) out[key].pa2 = +v;
+      });
+      if (!order.length) doc.querySelectorAll("tr").forEach(function (r) {
+        var tds = Array.prototype.filter.call(r.children, function (c) { return c.tagName === "TD"; });
+        var sp = tds.length >= 3 && tds[0].querySelector("span");
+        if (sp) add((sp.innerHTML.split(/<br\s*\/?>/i)[0] || "").replace(/<[^>]+>/g, ""));
+      });
+    }
+    return { title: clean((doc.querySelector("title") || {}).textContent), boats: order.map(function (n) { var b = out[n]; return { name: n, pa: b.pa || b.pa2 || 0 }; }) };
+  }
+  async function findSite(input) {
+    try {
+      let t = String(input || "").trim();
+      if (!/^https?:\/\//i.test(t)) t = "https://" + t;
+      const host = (/^https?:\/\/([^/?#]+)/i.exec(t) || [])[1];
+      if (!host || !/\./.test(host)) return { ok: false, error: "주소를 알아볼 수 없어요" };
+      const h = host.toLowerCase().replace(/^www\./, "");
+      const kind = /\.sunsang24\.com$/.test(h) ? "ss" : "tf";
+      const [ty, tm, td] = todayKST();
+      const pages = kind === "ss"
+        ? [`https://${h}/ship/schedule_fleet/${ty}${pad(tm)}`, ...[1].map((i) => { const d = new Date(Date.UTC(ty, tm - 1 + i, 1)); return `https://${h}/ship/schedule_fleet/${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}`; })]
+        : [`https://${h}/index.php?mid=bk&year=${ty}&month=${pad(tm)}&day=${pad(td)}`];
+      const boats = [], seen = new Set(); let title = "";
+      for (const url of pages) {
+        let html; try { html = await get(url); } catch (e) { continue; }
+        const r = fishFind(kind, html);
+        if (!r) continue;
+        title = title || r.title;
+        (r.boats || []).forEach((b) => { if (!seen.has(b.name)) { seen.add(b.name); boats.push(b); } });
+      }
+      if (!boats.length) return { ok: false, host: h, kind, error: kind === "ss" ? "선상24 일정표에서 배를 찾지 못했어요" : "예약 목록(index.php?mid=bk)에서 배를 찾지 못했어요. 이 예약 프로그램을 쓰지 않는 사이트일 수 있어요" };
+      const owner = {}; SITES.forEach((x) => x.boats.forEach((n) => { owner[n] = x.label; }));
+      return { ok: true, host: h, kind, step: kind === "ss" ? undefined : 4, label: (title.split(/[|:\-–]/).map((x) => x.trim()).find((x) => x && !/예약|reserv|일정/i.test(x)) || "").slice(0, 20) || h, boats: boats.map((b) => ({ ...b, taken: owner[b.name] && !SITES.some((x) => x.host === h && x.boats.includes(b.name)) ? owner[b.name] : "" })), have: (SITES.find((x) => x.host === h) || {}).boats || [] };
+    } catch (e) { return { ok: false, error: e.message || String(e) }; }
+  }
+
   window.__host = function (u) {
     u = String(u || "");
+    if (u.startsWith("fishing://sites?find=")) { // 선사 추가: 주소에서 배 찾기
+      findSite(decodeURIComponent(u.slice("fishing://sites?find=".length))).then((r) => { try { window.__sitesFound(r); } catch (e) {} });
+      return;
+    }
+    if (u.startsWith("fishing://sites?save=")) { // 선사 목록 저장 → 새 목록으로 다시 열기
+      let list = null;
+      try { list = JSON.parse(decodeURIComponent(u.slice("fishing://sites?save=".length))); } catch (e) {}
+      settings = { ...settings, sites: Array.isArray(list) && list.length ? list : null };
+      store.put("settings", settings).then(() => location.reload());
+      return;
+    }
     if (u.startsWith("fishing://check")) {
       const list = [...first], v = ymOf(u);
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);

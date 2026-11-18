@@ -196,11 +196,30 @@ func safeJS(s string) string {
 	return strings.ReplaceAll(s, "</", `<\/`)
 }
 
+// 받아도 되는 주소인지: 기본 선사, 또는 캘린더 화면이 보낸 요청(X-Fishing 머리글)이면 사용자가 더한 선사도 허용.
+// 다른 사이트의 페이지는 이 머리글을 붙여 이 프로그램에 요청할 수 없다(브라우저가 막음).
+func okURL(r *http.Request, u *url.URL) bool {
+	if u.Scheme != "https" {
+		return false
+	}
+	h := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	if allowed[h] {
+		return true
+	}
+	if r.Header.Get("X-Fishing") != "1" || !strings.Contains(h, ".") {
+		return false
+	}
+	if ip := net.ParseIP(h); ip != nil || h == "localhost" {
+		return false // 이 PC·내부망 주소는 받지 않음
+	}
+	return true
+}
+
 // 선사 페이지 대신 받기
 func serveFetch(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("url")
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || !allowed[strings.TrimPrefix(u.Hostname(), "www.")] {
+	if err != nil || !okURL(r, u) {
 		http.Error(w, "허용되지 않은 주소", http.StatusForbidden)
 		return
 	}
@@ -219,7 +238,7 @@ func serveFetch(w http.ResponseWriter, r *http.Request) {
 func serveImg(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("url")
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || !allowed[strings.TrimPrefix(u.Hostname(), "www.")] {
+	if err != nil || !okURL(r, u) {
 		http.Error(w, "허용되지 않은 주소", http.StatusForbidden)
 		return
 	}
