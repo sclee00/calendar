@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#1f5f99">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}.cal{touch-action:pan-y}.swl #grid{animation:swl .22s ease-out}.swr #grid{animation:swr .22s ease-out}@keyframes swl{from{transform:translateX(28px);opacity:.4}}@keyframes swr{from{transform:translateX(-28px);opacity:.4}}@media (prefers-reduced-motion:reduce){.swl *,.swr *{animation:none!important}}
+</style>
 <title>연안부두 낚시배 빈자리</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
@@ -594,6 +595,21 @@ window.__setNotices=(sites,freshCount)=>{
 };
 document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
+// 달력을 옆으로 쓸어 이전/다음 달로 (손가락·마우스 끌기·트랙패드 두 손가락)
+(()=>{const cal=document.querySelector(".cal");if(!cal)return;
+  const go=d=>{const b=document.getElementById(d>0?"next":"prev");if(b.disabled)return false;b.click();cal.classList.remove("swl","swr");void cal.offsetWidth;cal.classList.add(d>0?"swl":"swr");return true};
+  const judge=(dx,dy,dt)=>Math.abs(dx)>=50&&Math.abs(dx)>Math.abs(dy)*1.6&&dt<900?(dx<0?1:-1):0;
+  let eat=false;const eatSoon=()=>{eat=true;setTimeout(()=>{eat=false},450)};
+  let t=null;
+  cal.addEventListener("touchstart",e=>{if(e.touches.length!==1){t=null;return}const p=e.touches[0];t={x:p.clientX,y:p.clientY,ms:Date.now()}},{passive:true});
+  cal.addEventListener("touchend",e=>{if(!t)return;const p=e.changedTouches[0],d=judge(p.clientX-t.x,p.clientY-t.y,Date.now()-t.ms);t=null;if(d&&go(d))eatSoon()},{passive:true});
+  cal.addEventListener("touchcancel",()=>{t=null});
+  cal.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"||e.button!==0||e.target.closest("button,a,input,select"))return;const x0=e.clientX,y0=e.clientY,ms=Date.now();
+    const up=ev=>{document.removeEventListener("pointerup",up,true);const d=judge(ev.clientX-x0,ev.clientY-y0,Date.now()-ms);if(d&&go(d))eatSoon()};document.addEventListener("pointerup",up,true)});
+  cal.addEventListener("click",e=>{if(eat&&e.isTrusted){eat=false;e.stopPropagation();e.preventDefault()}},true);
+  cal.addEventListener("contextmenu",e=>{if(eat){e.stopPropagation();e.preventDefault()}},true);
+  let acc=0,lock=0;cal.addEventListener("wheel",e=>{if(Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;e.preventDefault();if(Date.now()<lock)return;acc+=e.deltaX;if(Math.abs(acc)>=60){go(acc>0?1:-1);acc=0;lock=Date.now()+600}},{passive:false});
+})();
 document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
 document.getElementById("onlyOpen").onclick=()=>{st.only=!st.only;render()};
 meta();render();
