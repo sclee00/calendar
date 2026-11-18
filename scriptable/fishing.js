@@ -902,7 +902,7 @@ const LOADING = `<!doctype html><meta name="viewport" content="width=device-widt
 
 // ── 홈 화면 위젯: 작은 달력 ──
 // 위젯은 실행 시간이 짧아서 선사 사이트를 읽지 않고, 앱·자동화가 저장해 둔 결과(없으면 웹 캘린더 결과)로 그린다.
-// 날짜마다 자리가 남은 배 수(초록), 내 예약 날(금색 테두리), 오늘(파란 바탕). 누르면 앱이 열린다.
+// 날짜마다 고른 배들의 남은 자리 합(석, 초록), 내 예약 날(금색 테두리), 오늘(파란 바탕). 누르면 앱이 열린다.
 // 위젯 설정의 Parameter: 비우면 이번 달, '다음달'(또는 +1) 다음 달, +2 다다음 달 … (위젯을 여러 개 겹쳐 두고 넘겨 보기)
 const widgetOffset = (p) => { p = String(p || ""); if (/다다음/.test(p)) return 2; if (/다음/.test(p)) return 1; const n = parseInt((/[+]?\d+/.exec(p) || [])[0], 10); return Number.isFinite(n) ? Math.max(0, Math.min(11, n)) : 0; };
 async function calendarWidget() {
@@ -922,7 +922,7 @@ async function calendarWidget() {
   const mk = ymKey(cy, cm), M = (data && data.months && data.months[mk]) || { boats: {} };
   const L = daysIn(cy, cm);
   const cnt = Array(L + 1).fill(0), any = Array(L + 1).fill(false);
-  for (const b of boatsOf(M)) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1]++; });
+  for (const b of boatsOf(M)) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1] += v; });
   const fam = config.widgetFamily || "large";
   const C = { bg: "#ffffff", ink: "#1d2b36", mute: "#9aa7b1", sun: "#d64545", sat: "#2f6fde", open: "#1f9d55", today: "#e3eefb", gold: "#e3a21a", head: "#1f5f99" };
   const w = new ListWidget();
@@ -942,13 +942,13 @@ async function calendarWidget() {
       const dt = new Date(Date.UTC(ty, tm - 1, td + i)), y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
       const MM = (data && data.months && data.months[ymKey(y, m)]) || { boats: {} };
       let n = 0, seen = false;
-      for (const b of boatsOf(MM)) { const v = (b.s || [])[d - 1]; if (v !== null && v !== undefined) seen = true; if (typeof v === "number" && v > 0) n++; }
+      for (const b of boatsOf(MM)) { const v = (b.s || [])[d - 1]; if (v !== null && v !== undefined) seen = true; if (typeof v === "number" && v > 0) n += v; }
       const r = w.addStack(); r.layoutHorizontally(); r.centerAlignContent();
       const wd = dt.getUTCDay();
       txt(r, `${m}/${d} ${WD[wd]}`, 12, wd === 0 ? C.sun : wd === 6 ? C.sat : C.ink, i === 0);
       if (mine.has(`${ymKey(y, m)}|${d}`)) txt(r, " ★", 11, C.gold, true);
       r.addSpacer();
-      txt(r, n ? `${n}척` : seen ? "마감" : "–", 12, n ? C.open : C.mute, !!n);
+      txt(r, n ? `${n}석` : seen ? "마감" : "–", 12, n ? C.open : C.mute, !!n);
       w.addSpacer(2);
     }
     w.addSpacer();
@@ -982,7 +982,7 @@ async function calendarWidget() {
         cell.layoutVertically(); cell.centerAlignContent();
         const a = cell.addStack(); a.layoutHorizontally(); a.addSpacer(); txt(a, String(d), 12, color, d === cd); a.addSpacer();
         const b = cell.addStack(); b.layoutHorizontally(); b.addSpacer();
-        if (!past && cnt[d]) txt(b, `${cnt[d]}척`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
+        if (!past && cnt[d]) txt(b, `${cnt[d]}석`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
         b.addSpacer();
       } else {
         cell.layoutHorizontally(); cell.centerAlignContent(); cell.addSpacer();
