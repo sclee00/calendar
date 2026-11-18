@@ -387,6 +387,7 @@ const st={on:new Set(BOATS.map(b=>b.id)),m:Math.max(0,MONTHS.indexOf(TODAY.slice
 let _offSaved=null;try{_offSaved=JSON.parse(localStorage.getItem("boatsOff")||"null")}catch(e){}
 if(Array.isArray(_offSaved))st.on=new Set(BOATS.filter(b=>!_offSaved.includes(b.name)).map(b=>b.id));
 else if(Array.isArray(_onSaved))st.on=new Set(BOATS.filter(b=>_onSaved.includes(b.name)||!DEFAULT_ORDER.some(o=>o[0]===b.name)).map(b=>b.id));
+if(window.__startYm&&MONTHS.includes(window.__startYm)){st.m=MONTHS.indexOf(window.__startYm);st.day=window.__startYm===TODAY.slice(0,7)?now.getDate():1} // 위젯을 눌러 열면 그 달로
 if(Array.isArray(_spSaved)){const v=[...new Set(_spSaved.map(spOf))];if(v.length){st.sp=new Set(v);if(!_spSaved.includes("u"))st.sp.add("u")}}
 
 function badge(b,cls,sp,title,style="",attrs=""){

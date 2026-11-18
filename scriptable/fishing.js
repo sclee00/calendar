@@ -903,6 +903,8 @@ const LOADING = `<!doctype html><meta name="viewport" content="width=device-widt
 // ── 홈 화면 위젯: 작은 달력 ──
 // 위젯은 실행 시간이 짧아서 선사 사이트를 읽지 않고, 앱·자동화가 저장해 둔 결과(없으면 웹 캘린더 결과)로 그린다.
 // 날짜마다 자리가 남은 배 수(초록), 내 예약 날(금색 테두리), 오늘(파란 바탕). 누르면 앱이 열린다.
+// 위젯 설정의 Parameter: 비우면 이번 달, '다음달'(또는 +1) 다음 달, +2 다다음 달 … (위젯을 여러 개 겹쳐 두고 넘겨 보기)
+const widgetOffset = (p) => { p = String(p || ""); if (/다다음/.test(p)) return 2; if (/다음/.test(p)) return 1; const n = parseInt((/[+]?\d+/.exec(p) || [])[0], 10); return Number.isFinite(n) ? Math.max(0, Math.min(11, n)) : 0; };
 async function calendarWidget() {
   let data = null; try { data = JSON.parse(fm.readString(CACHE)); } catch (e) {}
   if (!data) data = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
@@ -915,15 +917,17 @@ async function calendarWidget() {
   // 위젯 위에 합산 중인 배 이름 한 줄 (전부면 '모든 배')
   const names = allow.size >= KEEP.length ? "모든 배" : KEEP.filter((n) => allow.has(n)).join(" · ");
   const boatsOf = (MM) => Object.entries((MM && MM.boats) || {}).filter(([n]) => allow.has(n)).map(([, b]) => b);
-  const mk = ymKey(ty, tm), M = (data && data.months && data.months[mk]) || { boats: {} };
-  const L = daysIn(ty, tm);
+  const off = widgetOffset(args.widgetParameter);
+  const cdt = new Date(Date.UTC(ty, tm - 1 + off, 1)), cy = cdt.getUTCFullYear(), cm = cdt.getUTCMonth() + 1, cd = off ? 0 : td; // 달력에 그릴 달
+  const mk = ymKey(cy, cm), M = (data && data.months && data.months[mk]) || { boats: {} };
+  const L = daysIn(cy, cm);
   const cnt = Array(L + 1).fill(0), any = Array(L + 1).fill(false);
   for (const b of boatsOf(M)) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1]++; });
   const fam = config.widgetFamily || "large";
   const C = { bg: "#ffffff", ink: "#1d2b36", mute: "#9aa7b1", sun: "#d64545", sat: "#2f6fde", open: "#1f9d55", today: "#e3eefb", gold: "#e3a21a", head: "#1f5f99" };
   const w = new ListWidget();
   w.backgroundColor = new Color(C.bg);
-  w.url = "scriptable:///run/" + encodeURIComponent(Script.name());
+  w.url = "scriptable:///run/" + encodeURIComponent(Script.name()) + "?ym=" + mk; // 누르면 앱이 그 달로 열림
   w.refreshAfterDate = new Date(Date.now() + 3600e3);
   const txt = (st, t, size, color, bold) => { const x = st.addText(t); x.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size); x.textColor = new Color(color); x.lineLimit = 1; return x; };
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
@@ -953,11 +957,11 @@ async function calendarWidget() {
   }
 
   const big = fam !== "medium";
-  const first = new Date(Date.UTC(ty, tm - 1, 1)).getUTCDay(), rows = Math.ceil((first + L) / 7);
+  const first = new Date(Date.UTC(cy, cm - 1, 1)).getUTCDay(), rows = Math.ceil((first + L) / 7);
   const cw = 44, ch = big ? Math.min(54, Math.floor(280 / rows)) : Math.floor(98 / rows);
   w.setPadding(big ? 12 : 8, 10, big ? 10 : 6, 10);
   const head = w.addStack(); head.layoutHorizontally(); head.centerAlignContent();
-  txt(head, `${tm}월 빈자리`, big ? 15 : 12, C.head, true);
+  txt(head, `${cy !== ty ? cy + "년 " : ""}${cm}월 빈자리`, big ? 15 : 12, C.head, true);
   head.addSpacer();
   if (stamp) txt(head, stamp + " 기준", big ? 9 : 8, C.mute);
   const nm = txt(w, names, big ? 10 : 8, C.ink); nm.lineLimit = big ? 2 : 1; nm.minimumScaleFactor = 0.7;
@@ -970,19 +974,19 @@ async function calendarWidget() {
       const d = r * 7 + c - first + 1;
       const cell = row.addStack(); cell.size = new Size(cw, ch); cell.cornerRadius = 7;
       if (d < 1 || d > L) continue;
-      const past = d < td, isMine = mine.has(`${mk}|${d}`);
-      if (d === td) cell.backgroundColor = new Color(C.today);
+      const past = d < cd, isMine = mine.has(`${mk}|${d}`);
+      if (d === cd) cell.backgroundColor = new Color(C.today);
       if (isMine) { cell.borderColor = new Color(C.gold); cell.borderWidth = 2; }
       const color = past ? C.mute : c === 0 ? C.sun : c === 6 ? C.sat : C.ink;
       if (big) {
         cell.layoutVertically(); cell.centerAlignContent();
-        const a = cell.addStack(); a.layoutHorizontally(); a.addSpacer(); txt(a, String(d), 12, color, d === td); a.addSpacer();
+        const a = cell.addStack(); a.layoutHorizontally(); a.addSpacer(); txt(a, String(d), 12, color, d === cd); a.addSpacer();
         const b = cell.addStack(); b.layoutHorizontally(); b.addSpacer();
         if (!past && cnt[d]) txt(b, `${cnt[d]}척`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
         b.addSpacer();
       } else {
         cell.layoutHorizontally(); cell.centerAlignContent(); cell.addSpacer();
-        txt(cell, String(d), 10, color, d === td);
+        txt(cell, String(d), 10, color, d === cd);
         if (!past && cnt[d]) { cell.addSpacer(2); txt(cell, String(cnt[d]), 9, C.open, true); }
         cell.addSpacer();
       }
@@ -992,7 +996,7 @@ async function calendarWidget() {
 }
 
 async function run() {
-  if (config.runsInWidget && args.widgetParameter !== "알림") {
+  if (config.runsInWidget && !/알림/.test(String(args.widgetParameter || ""))) {
     // 홈 화면 위젯(기본): 작은 달력. 위젯 설정의 Parameter에 '알림'이라고 적으면 예전처럼 빈자리 알림 위젯.
     try { Script.setWidget(await calendarWidget()); } catch (e) { const w = new ListWidget(); w.addText("낚시배 빈자리"); w.addText("오류: " + e.message); Script.setWidget(w); }
     return;
@@ -1084,7 +1088,7 @@ async function main(wv, say, wvClosed) {
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
-  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
+  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__startYm=${JSON.stringify(((args.queryParameters || {}).ym || "").slice(0, 7))};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
