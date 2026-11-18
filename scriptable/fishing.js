@@ -836,7 +836,95 @@ async function backgroundCheck() {
 
 const LOADING = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;font:16px -apple-system,sans-serif;display:grid;place-items:center;height:100vh;background:#f3f5f7;color:#18232c"><div id="m">낚시배 빈자리 불러오는 중…</div></body>`;
 
+// ── 홈 화면 위젯: 작은 달력 ──
+// 위젯은 실행 시간이 짧아서 선사 사이트를 읽지 않고, 앱·자동화가 저장해 둔 결과(없으면 웹 캘린더 결과)로 그린다.
+// 날짜마다 자리가 남은 배 수(초록), 내 예약 날(금색 테두리), 오늘(파란 바탕). 누르면 앱이 열린다.
+async function calendarWidget() {
+  let data = null; try { data = JSON.parse(fm.readString(CACHE)); } catch (e) {}
+  if (!data) data = await loadJSON(RAW + "data/seats.json?t=" + Date.now());
+  const settings = loadSettings();
+  const mine = new Set((settings.mine || []).map((k) => { const [mk, , d] = k.split("|"); return `${mk}|${+d}`; }));
+  const [ty, tm, td] = todayKST();
+  const mk = ymKey(ty, tm), M = (data && data.months && data.months[mk]) || { boats: {} };
+  const L = daysIn(ty, tm);
+  const cnt = Array(L + 1).fill(0), any = Array(L + 1).fill(false);
+  for (const b of Object.values(M.boats || {})) (b.s || []).forEach((v, i) => { if (v !== null && v !== undefined) any[i + 1] = true; if (typeof v === "number" && v > 0) cnt[i + 1]++; });
+  const fam = config.widgetFamily || "large";
+  const C = { bg: "#ffffff", ink: "#1d2b36", mute: "#9aa7b1", sun: "#d64545", sat: "#2f6fde", open: "#1f9d55", today: "#e3eefb", gold: "#e3a21a", head: "#1f5f99" };
+  const w = new ListWidget();
+  w.backgroundColor = new Color(C.bg);
+  w.url = "scriptable:///run/" + encodeURIComponent(Script.name());
+  w.refreshAfterDate = new Date(Date.now() + 3600e3);
+  const txt = (st, t, size, color, bold) => { const x = st.addText(t); x.font = bold ? Font.boldSystemFont(size) : Font.systemFont(size); x.textColor = new Color(color); x.lineLimit = 1; return x; };
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const stamp = data && data.updatedAt ? data.updatedAt.slice(5, 16).replace("-", "/").replace("T", " ") : "";
+
+  if (fam === "small") { // 작은 위젯: 오늘부터 6일 목록
+    w.setPadding(10, 12, 10, 12);
+    txt(w, "낚시배 빈자리", 12, C.head, true);
+    w.addSpacer(4);
+    for (let i = 0; i < 6; i++) {
+      const dt = new Date(Date.UTC(ty, tm - 1, td + i)), y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
+      const MM = (data && data.months && data.months[ymKey(y, m)]) || { boats: {} };
+      let n = 0, seen = false;
+      for (const b of Object.values(MM.boats || {})) { const v = (b.s || [])[d - 1]; if (v !== null && v !== undefined) seen = true; if (typeof v === "number" && v > 0) n++; }
+      const r = w.addStack(); r.layoutHorizontally(); r.centerAlignContent();
+      const wd = dt.getUTCDay();
+      txt(r, `${m}/${d} ${WD[wd]}`, 12, wd === 0 ? C.sun : wd === 6 ? C.sat : C.ink, i === 0);
+      if (mine.has(`${ymKey(y, m)}|${d}`)) txt(r, " ★", 11, C.gold, true);
+      r.addSpacer();
+      txt(r, n ? `${n}척` : seen ? "마감" : "–", 12, n ? C.open : C.mute, !!n);
+      w.addSpacer(2);
+    }
+    w.addSpacer();
+    if (stamp) txt(w, stamp + " 기준", 8, C.mute);
+    return w;
+  }
+
+  const big = fam !== "medium";
+  const first = new Date(Date.UTC(ty, tm - 1, 1)).getUTCDay(), rows = Math.ceil((first + L) / 7);
+  const cw = 44, ch = big ? Math.min(54, Math.floor(280 / rows)) : Math.floor(108 / rows);
+  w.setPadding(big ? 12 : 8, 10, big ? 10 : 6, 10);
+  const head = w.addStack(); head.layoutHorizontally(); head.centerAlignContent();
+  txt(head, `${tm}월 낚시배 빈자리`, big ? 15 : 12, C.head, true);
+  head.addSpacer();
+  if (stamp) txt(head, stamp + " 기준", big ? 9 : 8, C.mute);
+  w.addSpacer(big ? 6 : 2);
+  const wk = w.addStack(); wk.layoutHorizontally();
+  WD.forEach((t, i) => { const c = wk.addStack(); c.size = new Size(cw, big ? 14 : 11); c.centerAlignContent(); const x = txt(c, t, big ? 10 : 8, i === 0 ? C.sun : i === 6 ? C.sat : C.mute, true); x.centerAlignText(); });
+  for (let r = 0; r < rows; r++) {
+    const row = w.addStack(); row.layoutHorizontally();
+    for (let c = 0; c < 7; c++) {
+      const d = r * 7 + c - first + 1;
+      const cell = row.addStack(); cell.size = new Size(cw, ch); cell.cornerRadius = 7;
+      if (d < 1 || d > L) continue;
+      const past = d < td, isMine = mine.has(`${mk}|${d}`);
+      if (d === td) cell.backgroundColor = new Color(C.today);
+      if (isMine) { cell.borderColor = new Color(C.gold); cell.borderWidth = 2; }
+      const color = past ? C.mute : c === 0 ? C.sun : c === 6 ? C.sat : C.ink;
+      if (big) {
+        cell.layoutVertically(); cell.centerAlignContent();
+        const a = cell.addStack(); a.layoutHorizontally(); a.addSpacer(); txt(a, String(d), 12, color, d === td); a.addSpacer();
+        const b = cell.addStack(); b.layoutHorizontally(); b.addSpacer();
+        if (!past && cnt[d]) txt(b, `${cnt[d]}척`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
+        b.addSpacer();
+      } else {
+        cell.layoutHorizontally(); cell.centerAlignContent(); cell.addSpacer();
+        txt(cell, String(d), 10, color, d === td);
+        if (!past && cnt[d]) { cell.addSpacer(2); txt(cell, String(cnt[d]), 9, C.open, true); }
+        cell.addSpacer();
+      }
+    }
+  }
+  return w;
+}
+
 async function run() {
+  if (config.runsInWidget && args.widgetParameter !== "알림") {
+    // 홈 화면 위젯(기본): 작은 달력. 위젯 설정의 Parameter에 '알림'이라고 적으면 예전처럼 빈자리 알림 위젯.
+    try { Script.setWidget(await calendarWidget()); } catch (e) { const w = new ListWidget(); w.addText("낚시배 빈자리"); w.addText("오류: " + e.message); Script.setWidget(w); }
+    return;
+  }
   if (!config.runsInWidget && !config.runsInApp) {
     // 단축어 자동화(앱을 열지 않고 실행): 캘린더 결과를 새로 받아 두고, 알림 조건도 확인
     let out = "";
