@@ -483,10 +483,11 @@ function makeOcr(evalJs) {
   for (const k in cache) if (k !== "_fail" && !(cache[k] && cache[k].ms)) delete cache[k]; // 첫 버전에서 저장한 결과는 다시 읽는다
   const save = () => { try { fm.writeString(OCR_CACHE, JSON.stringify(cache)); } catch (e) {} };
   // 실패하면 6시간 동안은 다시 시도하지 않는다 (확인이 매번 길어지지 않게)
-  const failRecent = cache._fail && Date.now() - cache._fail.ms < 6 * 3600e3;
+  const OCR_V = 2; // 고친 뒤에는 예전 실패 기록을 무시하고 바로 다시 시도
+  const failRecent = cache._fail && cache._fail.v === OCR_V && Date.now() - cache._fail.ms < 6 * 3600e3;
   let fresh = 0, broken = !!failRecent, spent = 0;
   const stats = { read: 0, sp: { j: 0, f: 0, u: 0 }, err: failRecent ? cache._fail.err : "", skipped: 0 };
-  const fail = (err) => { broken = true; stats.err = err; cache._fail = { err, ms: Date.now(), at: kstIso() }; save(); console.log("OCR 실패: " + err); };
+  const fail = (err) => { broken = true; stats.err = err; cache._fail = { err, v: OCR_V, ms: Date.now(), at: kstIso() }; save(); console.log("OCR 실패: " + err); };
   const f = async (url) => {
     if (cache[url] && url !== "_fail") return cache[url].sp;
     if (!evalJs) return null;
@@ -497,7 +498,7 @@ function makeOcr(evalJs) {
       const r = new Request(url); r.timeoutInterval = 20;
       const data = await r.load();
       const mime = /\.png/i.test(url) ? "image/png" : /\.gif/i.test(url) ? "image/gif" : /\.webp/i.test(url) ? "image/webp" : "image/jpeg";
-      const text = await evalJs(`__ocrText(${JSON.stringify("data:" + mime + ";base64," + data.toBase64String())}).then(function(t){completion(String(t))},function(e){completion("!ERR "+(e&&e.message||e))})`);
+      const text = await evalJs(`__ocrText(${JSON.stringify("data:" + mime + ";base64," + data.toBase64String())}).then(function(t){completion(String(t))},function(e){completion("!ERR "+(e&&e.message||e))}); 0`);
       spent += Date.now() - t0;
       if (typeof text !== "string" || text.startsWith("!ERR")) { fail(String(text || "응답 없음").replace(/^!ERR /, "")); return null; }
       const sp = ocrSpecies(text);
@@ -507,7 +508,7 @@ function makeOcr(evalJs) {
       const keys = Object.keys(cache); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((x) => delete cache[x]);
       save();
       return sp;
-    } catch (e) { spent += Date.now() - t0; fail("그림 받기 실패: " + (e.message || e)); return null; }
+    } catch (e) { spent += Date.now() - t0; fail(String(e.message || e)); return null; }
   };
   // 확인 결과 문구에 붙일 요약
   f.summary = () => {
