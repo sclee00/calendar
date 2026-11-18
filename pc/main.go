@@ -59,7 +59,7 @@ var (
 	lastPing = time.Now()
 	pingMu   sync.Mutex
 	stripRe  = regexp.MustCompile(`(?is)<script\b.*?</script>|<style\b.*?</style>|<!--.*?-->`)
-	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state|notices)$`)
+	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state|notices|ocr)$`)
 )
 
 func main() {
@@ -134,6 +134,7 @@ func main() {
 		io.WriteString(w, "fishing "+version)
 	})
 	mux.HandleFunc("/api/fetch", serveFetch)
+	mux.HandleFunc("/api/img", serveImg)
 	mux.HandleFunc("/api/store/", serveStore)
 
 	// 탭이 모두 닫혀 한동안 연락이 없으면 종료 (백그라운드 탭은 1분에 한 번만 연락할 수 있어 넉넉히)
@@ -212,6 +213,29 @@ func serveFetch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	io.WriteString(w, stripRe.ReplaceAllString(t, ""))
+}
+
+// 공지 그림(포스터) 받기: 그림 속 글자에서 어종을 읽을 때 쓴다 (허용한 선사 주소만, 그림만)
+func serveImg(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("url")
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || !allowed[strings.TrimPrefix(u.Hostname(), "www.")] {
+		http.Error(w, "허용되지 않은 주소", http.StatusForbidden)
+		return
+	}
+	t, err := fetchText(raw, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	ct := http.DetectContentType([]byte(t))
+	if !strings.HasPrefix(ct, "image/") {
+		http.Error(w, "그림이 아님", http.StatusUnsupportedMediaType)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "no-store")
+	io.WriteString(w, t)
 }
 
 func fetchText(raw string, paced bool) (string, error) {

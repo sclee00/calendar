@@ -84,6 +84,46 @@ function fishLabel(t) {
   hits.forEach(function (h) { var w = h[2] === "쭈꾸미" ? "주꾸미" : h[2]; if (out.indexOf(w) < 0) out.push(w); });
   return out.slice(0, 4).join("·");
 }
+// ── 그림으로 된 출조 안내(포스터)에서 어종 읽기 (OCR) ──
+// 공지 칸에 글 대신 그림만 있어 어종을 모를 때, 그림 속 글자를 읽어 어종을 찾는다. 한 번 읽은 그림은 결과를 저장해 다시 읽지 않는다.
+function ocrSpecies(t) {
+  t = String(t || "").replace(/\s+/g, "");
+  var F = /광어|우럭|농어|민어|참돔|도미|삼치|부시리|방어|대구|열기|볼락|노래미|백조기|조기|우광|광우|타이라바/;
+  var C = /꾸미|쭈꾸|주꾸|쭈갑|갑쭈|갑오|문어|한치|오징어/; // OCR이 '쭈'를 잘못 읽어도 '꾸미'로 잡힌다
+  var pick = function (s) { var f = s.search(F), c = s.search(C); if (f < 0 && c < 0) return "u"; if (f < 0) return "j"; if (c < 0) return "f"; return f < c ? "f" : "j"; };
+  var near = (t.match(/대상어종[^가-힣]{0,3}([가-힣]{2,8})/) || [])[1] || "";
+  var a = pick(near);
+  return a !== "u" ? a : pick(t);
+}
+// 화면(WebView·브라우저) 안에서 도는 OCR 엔진: tesseract.js(한국어)를 처음 쓸 때만 받아 온다
+function ocrEngine() {
+  window.__ocrText = function (src) {
+    var load = window.Tesseract ? Promise.resolve() : new Promise(function (ok, no) {
+      var s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      s.onload = ok; s.onerror = function () { no(new Error("OCR 엔진을 받지 못함")); }; document.head.appendChild(s);
+    });
+    var run = load.then(function () {
+      if (!window.__ocrW) window.__ocrW = Tesseract.createWorker("kor", 1, { langPath: "https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor/4.0.0" })
+        .then(function (w) { return w.setParameters({ tessedit_pageseg_mode: "11" }).then(function () { return w; }); });
+      return window.__ocrW;
+    }).then(function (w) {
+      return new Promise(function (ok, no) { var i = new Image(); i.onload = function () { ok(i); }; i.onerror = function () { no(new Error("그림을 읽지 못함")); }; i.src = src; })
+        .then(function (img) {
+          var W = img.naturalWidth || 800, H = img.naturalHeight || 400;
+          var o = document.createElement("canvas"); o.width = W; o.height = H; o.getContext("2d").drawImage(img, 0, 0);
+          // 두 번째로 읽을 그림: 2배 키우고 흑백으로 (장식 글씨가 조금 더 잘 읽힘)
+          var k = Math.min(2, 1600 / W), c = document.createElement("canvas"); c.width = Math.round(W * k); c.height = Math.round(H * k);
+          var g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
+          var d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+          for (var j = 0; j < p.length; j += 4) { var v = 0.299 * p[j] + 0.587 * p[j + 1] + 0.114 * p[j + 2] > 150 ? 255 : 0; p[j] = p[j + 1] = p[j + 2] = v; }
+          g.putImageData(d, 0, 0);
+          return w.recognize(o).then(function (a) { return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; }); });
+        });
+    });
+    var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과")); }, 90000); });
+    return Promise.race([run, limit]);
+  };
+}
 function classifySpecies(primary, fallback) {
   // 어종 분류: f = 물고기(광어·우럭 등), j = 주꾸미·갑오징어 등 두족류, u = 어종 미표기
   // primary(어종 칸)를 먼저 보고, 비어 있거나 모르는 말이면 fallback(공지·행 글자)에서 찾는다. 둘 다 없으면 추측하지 않고 u.
@@ -186,6 +226,7 @@ const NOTICE_STATE = fm.joinPath(DIR, "notices.json");
 
 const PARSER = `
 window.__noticeParse = ${noticeParse.toString()};
+(${ocrEngine.toString()})();
 window.__fishParse = function (kind, html, y, m) {
   const KEEP = ${JSON.stringify(KEEP)};
   const sq = s => (s || "").replace(/\\s+/g, "");
@@ -221,15 +262,18 @@ window.__fishParse = function (kind, html, y, m) {
       let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
       // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
       if (kind === "bus" && typeof st === "number" && st > 0 && !tds[1].textContent.trim() && !tds[1].querySelector("img")) st = null;
-      rows.push([dd, name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : ""]); found++;
+      const sp0 = spc(kind2, rowText);
+      // 어종을 글로 못 찾으면 공지 칸의 그림(포스터) 주소를 넘겨 그림 속 글자로 찾게 한다
+      const ims = sp0 === "u" ? [...tds[1].querySelectorAll("img")].map(i => i.getAttribute("src") || "").filter(x => x && !/myfishmap|_core.module/.test(x)).slice(0, 2) : null;
+      rows.push([dd, name, st, sp0, null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : "", ims]); found++;
     });
   }
   return { rows, found };
 };
 true;`;
 
-async function scrapeSite(parser, site, monthList, progress) {
-  const out = {};
+async function scrapeSite(parser, site, monthList, progress, ocr) {
+  const out = {}, need = [];
   const put = (y, m, d, name, s, sp, no, fn) => {
     if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
     const k = ymKey(y, m), L = daysIn(y, m);
@@ -252,10 +296,24 @@ async function scrapeSite(parser, site, monthList, progress) {
       const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
         for (let d = d0; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
         const res = await parse(await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
-        res.rows.forEach(([dd, n, s, sp, , fn]) => put(y, m, dd, n, s, sp, null, fn));
+        res.rows.forEach(([dd, n, s, sp, , fn, ims]) => { put(y, m, dd, n, s, sp, null, fn); if (sp === "u" && ims && ims.length) need.push([ymKey(y, m), n, dd, ims]); });
         found += res.found;
       }
       if (found) seen = true; else if (seen) break;
+    }
+  }
+  // 어종을 모르는 날: 공지 그림(포스터)에서 읽어 본다 (같은 그림은 한 번만)
+  if (ocr && need.length) {
+    const abs = (x) => /^https?:/.test(x) ? x : `https://${site.host}${x.startsWith("/") ? "" : "/"}${x}`;
+    let told = false;
+    for (const [k, n, d, ims] of need) {
+      const b = out[k] && out[k][n];
+      if (!b || b.s[d - 1] === null || b.sp[d - 1] !== "u") continue;
+      for (const x of ims) {
+        if (!told) { told = true; await progress(`${site.host} 그림 속 어종 읽는 중`); }
+        const sp = await ocr(abs(x));
+        if (sp && sp !== "u") { b.sp[d - 1] = sp; break; }
+      }
     }
   }
   for (const k in out) for (const n in out[k]) out[k][n].sp = out[k][n].sp.join("");
@@ -394,7 +452,9 @@ function regexParse(kind, html, y, m) {
         const rowText = [...seg.matchAll(/alt="([^"]*)"/g)].map((x) => x[1]).join(" ") + " " + strip(seg);
         let st = stc(alt); if (st === null && kind === "bus" && /지\s*역|[가-힣]+항|★/.test(strip(seg))) st = "w"; // 출조 버스: 장소·일정 안내는 있는데 예약창 안 열림
         if (kind === "bus" && typeof st === "number" && st > 0 && cells.length > 2 && !strip(cells[1]) && !/<img/i.test(cells[1]) && !/지\s*역|[가-힣]+항|★/.test(strip(seg))) st = null; // 출조 버스: 자리만 열리고 설명 없음 → 표시 안 함
-        rows.push([+day.slice(6), sp.name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || strip(seg)) : ""]); found++;
+        const sp0 = spc(kind2, rowText);
+        const ims = sp0 === "u" ? [...seg.matchAll(/<img[^>]+src="([^"]+)"/g)].map((x) => x[1]).filter((x) => !/myfishmap|_core.module/.test(x)).slice(0, 2) : null;
+        rows.push([+day.slice(6), sp.name, st, sp0, null, kind === "bus" ? fishLabel(kind2 || strip(seg)) : "", ims]); found++;
       });
     }
   }
@@ -407,9 +467,33 @@ async function makeParser() {
     await wv.loadHTML("<!doctype html><p>");
     await wv.evaluateJavaScript(PARSER);
     const ok = await wv.evaluateJavaScript(`typeof __fishParse==="function"`);
-    if (ok) return (kind, html, y, m) => wv.evaluateJavaScript(`__fishParse(${JSON.stringify(kind)}, ${JSON.stringify(html)}, ${y}, ${m})`);
+    if (ok) { const f = (kind, html, y, m) => wv.evaluateJavaScript(`__fishParse(${JSON.stringify(kind)}, ${JSON.stringify(html)}, ${y}, ${m})`); f.wv = wv; return f; }
   } catch (e) {}
   return async (kind, html, y, m) => regexParse(kind, html, y, m);
+}
+
+// OCR 결과 저장: 그림 주소 → 어종. evalJs가 없으면(자동화 실행) 저장된 결과만 쓰고 새로 읽지 않는다
+const OCR_CACHE = fm.joinPath(DIR, "ocr.json");
+function makeOcr(evalJs) {
+  let cache = {}; try { cache = JSON.parse(fm.readString(OCR_CACHE)) || {}; } catch (e) {}
+  let fresh = 0, broken = false;
+  return async (url) => {
+    if (cache[url]) return cache[url].sp;
+    if (!evalJs || broken || fresh >= 8) return null; // 한 번에 새 그림은 8장까지
+    fresh++;
+    try {
+      const r = new Request(url); r.timeoutInterval = 20;
+      const data = await r.load();
+      const mime = /\.png/i.test(url) ? "image/png" : /\.gif/i.test(url) ? "image/gif" : /\.webp/i.test(url) ? "image/webp" : "image/jpeg";
+      const text = await evalJs(`__ocrText(${JSON.stringify("data:" + mime + ";base64," + data.toBase64String())}).then(function(t){completion(String(t))},function(e){completion("!ERR "+(e&&e.message||e))})`);
+      if (typeof text !== "string" || text.startsWith("!ERR")) { broken = true; console.log("OCR 실패: " + text); return null; }
+      const sp = ocrSpecies(text);
+      cache[url] = { sp, t: text.replace(/\s+/g, " ").slice(0, 160), at: kstIso() };
+      const keys = Object.keys(cache); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((x) => delete cache[x]);
+      try { fm.writeString(OCR_CACHE, JSON.stringify(cache)); } catch (e) {}
+      return sp;
+    } catch (e) { return null; }
+  };
 }
 
 function watchDays(cfg) {
@@ -699,9 +783,10 @@ async function backgroundCheck() {
   if (!old || (web && web.updatedAt > old.updatedAt)) old = web || old || { months: {} };
   old = dropStale(old);
   const parser = await makeParser();
+  const bgOcr = makeOcr(null); // 자동화 실행은 시간이 짧아 새로 읽지 않고, 앱에서 읽어 둔 결과만 쓴다
   const results = {}, errors = [], sources = { ...(old.sources || {}) };
   await Promise.all(SITES.map(async (site) => {
-    try { results[site.id] = await scrapeSite(parser, site, list, () => null); sources[site.id] = kstIso(); }
+    try { results[site.id] = await scrapeSite(parser, site, list, () => null, bgOcr); sources[site.id] = kstIso(); }
     catch (e) { errors.push(`${site.host}: ${e.message}`); }
   }));
   const data = merge(old, results, errors, sources, list.map(([y, m]) => ymKey(y, m)));
@@ -832,10 +917,11 @@ async function main(wv, say) {
     const show = () => js(`__setChecking(true, ${JSON.stringify("확인 중: " + Object.values(doing).filter(Boolean).join(", "))})`);
     // 네 사이트를 동시에 확인하되, 한 사이트 안에서는 요청을 하나씩 보낸다
     const groups = SITES.map((x) => [x]);
+    const ocr = makeOcr((code) => wv.evaluateJavaScript(code, true));
     await Promise.all(groups.map(async (group, gi) => {
       for (const site of group) {
         try {
-          results[site.id] = await scrapeSite(appParser, site, list, (t) => { doing[gi] = t; return show(); });
+          results[site.id] = await scrapeSite(appParser, site, list, (t) => { doing[gi] = t; return show(); }, ocr);
           sources[site.id] = kstIso();
         } catch (e) {
           errors.push(`${site.host}: ${e.message}`);

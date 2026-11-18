@@ -58,6 +58,67 @@
     hits.forEach(function (h) { var w = h[2] === "쭈꾸미" ? "주꾸미" : h[2]; if (out.indexOf(w) < 0) out.push(w); });
     return out.slice(0, 4).join("·");
   }
+  // ── 그림으로 된 출조 안내(포스터)에서 어종 읽기 (OCR) ──
+  // 공지 칸에 글 대신 그림만 있어 어종을 모를 때, 그림 속 글자를 읽어 어종을 찾는다. 한 번 읽은 그림은 결과를 저장해 다시 읽지 않는다.
+  function ocrSpecies(t) {
+    t = String(t || "").replace(/\s+/g, "");
+    var F = /광어|우럭|농어|민어|참돔|도미|삼치|부시리|방어|대구|열기|볼락|노래미|백조기|조기|우광|광우|타이라바/;
+    var C = /꾸미|쭈꾸|주꾸|쭈갑|갑쭈|갑오|문어|한치|오징어/; // OCR이 '쭈'를 잘못 읽어도 '꾸미'로 잡힌다
+    var pick = function (s) { var f = s.search(F), c = s.search(C); if (f < 0 && c < 0) return "u"; if (f < 0) return "j"; if (c < 0) return "f"; return f < c ? "f" : "j"; };
+    var near = (t.match(/대상어종[^가-힣]{0,3}([가-힣]{2,8})/) || [])[1] || "";
+    var a = pick(near);
+    return a !== "u" ? a : pick(t);
+  }
+  // 화면(WebView·브라우저) 안에서 도는 OCR 엔진: tesseract.js(한국어)를 처음 쓸 때만 받아 온다
+  function ocrEngine() {
+    window.__ocrText = function (src) {
+      var load = window.Tesseract ? Promise.resolve() : new Promise(function (ok, no) {
+        var s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+        s.onload = ok; s.onerror = function () { no(new Error("OCR 엔진을 받지 못함")); }; document.head.appendChild(s);
+      });
+      var run = load.then(function () {
+        if (!window.__ocrW) window.__ocrW = Tesseract.createWorker("kor", 1, { langPath: "https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor/4.0.0" })
+          .then(function (w) { return w.setParameters({ tessedit_pageseg_mode: "11" }).then(function () { return w; }); });
+        return window.__ocrW;
+      }).then(function (w) {
+        return new Promise(function (ok, no) { var i = new Image(); i.onload = function () { ok(i); }; i.onerror = function () { no(new Error("그림을 읽지 못함")); }; i.src = src; })
+          .then(function (img) {
+            var W = img.naturalWidth || 800, H = img.naturalHeight || 400;
+            var o = document.createElement("canvas"); o.width = W; o.height = H; o.getContext("2d").drawImage(img, 0, 0);
+            // 두 번째로 읽을 그림: 2배 키우고 흑백으로 (장식 글씨가 조금 더 잘 읽힘)
+            var k = Math.min(2, 1600 / W), c = document.createElement("canvas"); c.width = Math.round(W * k); c.height = Math.round(H * k);
+            var g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
+            var d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+            for (var j = 0; j < p.length; j += 4) { var v = 0.299 * p[j] + 0.587 * p[j + 1] + 0.114 * p[j + 2] > 150 ? 255 : 0; p[j] = p[j + 1] = p[j + 2] = v; }
+            g.putImageData(d, 0, 0);
+            return w.recognize(o).then(function (a) { return w.recognize(c).then(function (b) { return a.data.text + "\n" + b.data.text; }); });
+          });
+      });
+      var limit = new Promise(function (_, no) { setTimeout(function () { no(new Error("OCR 시간 초과")); }, 90000); });
+      return Promise.race([run, limit]);
+    };
+  }
+  ocrEngine();
+  // OCR 결과 저장(이 PC): 그림 주소 → 어종. 새 그림은 한 번 확인에 8장까지
+  let ocrCache = null, ocrFresh = 0, ocrBroken = false;
+  async function ocrOf(url) {
+    if (!ocrCache) ocrCache = (await store.get("ocr")) || {};
+    if (ocrCache[url]) return ocrCache[url].sp;
+    if (ocrBroken || ocrFresh >= 8) return null;
+    ocrFresh++;
+    try {
+      const r = await fetch("/api/img?url=" + encodeURIComponent(url), { cache: "no-store" });
+      if (!r.ok) return null;
+      const src = URL.createObjectURL(await r.blob());
+      let text;
+      try { text = await window.__ocrText(src); } finally { URL.revokeObjectURL(src); }
+      const sp = ocrSpecies(text);
+      ocrCache[url] = { sp, t: String(text).replace(/\s+/g, " ").slice(0, 160), at: kstIso() };
+      const ks = Object.keys(ocrCache); if (ks.length > 300) ks.slice(0, ks.length - 300).forEach((x) => delete ocrCache[x]);
+      store.put("ocr", ocrCache);
+      return sp;
+    } catch (e) { ocrBroken = true; console.log("OCR 실패", e); return null; }
+  }
   function classifySpecies(primary, fallback) {
     const FISH = /광어|우럭|농어|민어|참돔|도미|타이라바|백조기|조기|삼치|부시리|방어|대구|열기|볼락|노래미|놀래미|우럭광어|광우|우광|외수질|다운샷|지깅|라이트지깅|침선|생미끼|선상낚시|원투|흘림|외줄/;
     const CEPH = /주꾸미|쭈꾸미|쭈구미|쭈갑|갑쭈|쭈\.갑|갑\.쭈|갑오징어|갑오|문어|한치|오징어|에기|쭈낚/;
@@ -106,14 +167,17 @@
       let st = stc(alt); if (st === null && kind === "bus" && tds[1].textContent.trim()) st = "w";
       // 출조 버스만: 예약창(자리)은 열렸는데 출조 설명이 비어 있으면 표시하지 않음
       if (kind === "bus" && typeof st === "number" && st > 0 && !tds[1].textContent.trim() && !tds[1].querySelector("img")) st = null;
-      rows.push([dd, name, st, spc(kind2, rowText), null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : ""]); found++;
+      const sp0 = spc(kind2, rowText);
+      // 어종을 글로 못 찾으면 공지 칸의 그림(포스터) 주소를 넘겨 그림 속 글자로 찾게 한다
+      const ims = sp0 === "u" ? [...tds[1].querySelectorAll("img")].map((i) => i.getAttribute("src") || "").filter((x) => x && !/myfishmap|_core.module/.test(x)).slice(0, 2) : null;
+      rows.push([dd, name, st, sp0, null, kind === "bus" ? fishLabel(kind2 || tds[1].textContent) : "", ims]); found++;
       });
     }
     return { rows, found };
   }
 
   async function scrapeSite(site, monthList, progress) {
-    const out = {};
+    const out = {}, need = [];
     const put = (y, m, d, name, s, sp, no, fn) => {
       if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
       const k = ymKey(y, m), L = daysIn(y, m);
@@ -135,10 +199,24 @@
         const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
         for (let d = d0; d <= daysIn(y, m); d += site.step || 4) {
           const res = parse(site.kind, await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
-          res.rows.forEach(([dd, n, s, sp, , fn]) => put(y, m, dd, n, s, sp, null, fn));
+          res.rows.forEach(([dd, n, s, sp, , fn, ims]) => { put(y, m, dd, n, s, sp, null, fn); if (sp === "u" && ims && ims.length) need.push([ymKey(y, m), n, dd, ims]); });
           found += res.found;
         }
         if (found) seen = true; else if (seen) break;
+      }
+    }
+    // 어종을 모르는 날: 공지 그림(포스터)에서 읽어 본다 (같은 그림은 한 번만)
+    if (need.length) {
+      let told = false;
+      for (const [k, n, d, ims] of need) {
+        const b = out[k] && out[k][n];
+        if (!b || b.s[d - 1] === null || b.sp[d - 1] !== "u") continue;
+        for (const x of ims) {
+          if (!told) { told = true; progress(`${site.host} 그림 속 어종 읽는 중`); }
+          let url; try { url = new URL(x, `https://${site.host}/`).href; } catch (e) { continue; }
+          const sp = await ocrOf(url);
+          if (sp && sp !== "u") { b.sp[d - 1] = sp; break; }
+        }
       }
     }
     for (const k in out) for (const n in out[k]) out[k][n].sp = out[k][n].sp.join("");
@@ -300,6 +378,7 @@ async function checkNotices(parse, getText, state) {
     window.__checked = [...checked];
     __setChecking(true, label(list) + " 확인하는 중…");
     const results = {}, errors = [], sources = { ...(old.sources || {}) }, doing = {};
+    ocrFresh = 0; ocrBroken = false;
     const show = () => __setChecking(true, "확인 중: " + Object.values(doing).filter(Boolean).join(", "));
     await Promise.all(SITES.map(async (site, gi) => {
       try {
