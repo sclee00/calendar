@@ -753,7 +753,9 @@ function watchMessage(fresh) {
   setInterval(ping, 20e3); ping();
 
   // 화면에 PC 버전 표시 (예전 버전이 떠 있는지 알 수 있게)
-  try { document.title = document.title.replace(/^PC · /, `PC ${window.__pcVersion || ""} · `); const st0 = document.getElementById("stamp"); if (st0) st0.insertAdjacentHTML("afterend", `<small style="display:block;color:var(--muted);font-size:11px">PC 버전 ${window.__pcVersion || "?"}</small>`); } catch (e) {}
+  try { document.title = document.title.replace(/^PC · /, `PC ${window.__pcVersion || ""} · `); const st0 = document.getElementById("stamp"); if (st0) st0.insertAdjacentHTML("afterend", `<small style="display:block;color:var(--muted);font-size:11px">PC 버전 ${window.__pcVersion || "?"} · <a href="#" id="pcQuit" style="color:inherit">프로그램 끝내기</a></small>`); } catch (e) {}
+  // 프로그램 끝내기: 탭만 닫으면 몇 분 동안 뒤에서 켜져 있어 exe를 바꿔 넣을 수 없으므로 바로 끝낸다
+  try { document.getElementById("pcQuit").onclick = (e) => { e.preventDefault(); fetch("/api/quit", { method: "POST" }).catch(() => {}).finally(() => { document.body.innerHTML = '<p style="font:16px sans-serif;padding:40px;text-align:center">낚시배 빈자리 PC 버전을 끝냈어요. 이 탭을 닫아도 돼요.<br><small>다시 쓰려면 fishing-seats.exe를 실행하세요.</small></p>'; }); }; } catch (e) {}
   // 시작: 설정한 기간을 한 번 확인
   window.__checked = [];
   want(first);
