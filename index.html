@@ -267,6 +267,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <select id="modeSel" aria-label="확인 방식"><option value="fast">빠른 모드 — 그림 속 어종은 읽지 않음</option><option value="normal">보통 모드 — 그림 속 어종도 읽음(OCR)</option></select>
     <small>빠른 모드는 그림(포스터)으로만 올라온 어종을 새로 읽지 않아 확인이 빨라요. 전에 읽어 둔 그림은 그대로 어종이 나와요. 보통 모드는 새 그림이 있으면 글자를 읽느라 그만큼 오래 걸려요.</small>
     </div></details>
+    <details class="fold" id="fold-web" hidden><summary>웹 캘린더에도 올리기 <small class="fs" id="sumWeb"></small></summary><div class="fbody">
+      <span id="webState" style="flex-basis:100%"></span>
+      <div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="sbtn" id="webSet">토큰 넣기</button><button type="button" class="mini" id="webOff">끄기(토큰 지우기)</button></div>
+      <small style="flex-basis:100%">켜 두면 아이폰에서 확인할 때마다 그 결과를 sclee00.github.io/calendar 에도 올려요. 그러면 웹 캘린더에서도 칸피싱·제일바다낚시까지 최신으로 보여요. 'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 GitHub 토큰이 필요해요.</small>
+    </div></details>
     <details class="fold" id="fold-sites" hidden><summary>선사 관리 <small class="fs" id="sumSites"></small></summary><div class="fbody">
       <div id="siteList" style="flex-basis:100%;display:flex;flex-direction:column;gap:10px"></div>
       <div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
@@ -715,6 +720,16 @@ if(IN_APP){
   if(!window.__mode&&window.__settings&&window.__settings.mode)window.__mode=window.__settings.mode;
   const ms=document.getElementById("modeSel");ms.value=window.__mode==="normal"?"normal":"fast";
   ms.onchange=()=>{window.__mode=ms.value;foldSums();location.href="fishing://settings?mode="+ms.value};
+}
+// 웹 캘린더에도 올리기 (아이폰 앱에서만)
+if(IN_APP&&!window.__isPC){
+  document.getElementById("fold-web").hidden=false;
+  window.__setWebUp=(on,msg)=>{window.__webUp=!!on;document.getElementById("sumWeb").textContent=on?"켜짐":"꺼짐";
+    document.getElementById("webState").innerHTML=(on?'<b style="color:#1f9d55">켜짐</b> — 확인할 때마다 웹 캘린더에도 올려요.':'<b>꺼짐</b> — 아이폰에서만 봐요.')+(msg?`<br><small>${String(msg).replace(/[<>&]/g,"")}</small>`:"");
+    document.getElementById("webOff").hidden=!on;document.getElementById("webSet").textContent=on?"토큰 바꾸기":"토큰 넣기"};
+  window.__setWebUp(window.__webUp);
+  document.getElementById("webSet").onclick=()=>{location.href="fishing://token?set"};
+  document.getElementById("webOff").onclick=()=>{location.href="fishing://token?off"};
 }
 // 선사 관리 (아이폰 앱·PC 버전): 선사 더하기·빼기, 선사별로 볼 배 고르기
 if(IN_APP){

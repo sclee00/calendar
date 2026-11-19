@@ -1088,7 +1088,7 @@ async function main(wv, say, wvClosed) {
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
-  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__startYm=${JSON.stringify(((args.queryParameters || {}).ym || "").slice(0, 7))};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
+  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__webUp=${Keychain.contains(TOKEN_KEY)};window.__startYm=${JSON.stringify(((args.queryParameters || {}).ym || "").slice(0, 7))};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -1214,6 +1214,26 @@ async function main(wv, say, wvClosed) {
       const v = ymOf(u);
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list); return false;
+    }
+    if (u.startsWith("fishing://token")) { // 웹 캘린더에도 올리기: 토큰 넣기·지우기
+      (async () => {
+        if (/off/.test(u)) { if (Keychain.contains(TOKEN_KEY)) Keychain.remove(TOKEN_KEY); Keychain.set(ASKED_KEY, "1"); return js(`__setWebUp(false,"토큰을 지웠어요")`); }
+        const a = new Alert();
+        a.title = "GitHub 토큰";
+        a.message = "'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 토큰(github_pat_…)을 붙여 넣으세요.";
+        a.addSecureTextField("github_pat_…", "");
+        a.addAction("저장");
+        a.addCancelAction("취소");
+        const i = await a.presentAlert();
+        const t = (a.textFieldValue(0) || "").trim();
+        if (i !== 0 || !t) return;
+        const prev = Keychain.contains(TOKEN_KEY) ? Keychain.get(TOKEN_KEY) : null;
+        Keychain.set(TOKEN_KEY, t);
+        await js(`__setWebUp(true,"올려 보는 중…")`);
+        try { await upload(old); await js(`__setWebUp(true,"웹 캘린더에 올렸어요 (${old.updatedAt ? old.updatedAt.slice(5, 16).replace("T", " ") : ""} 결과)")`); }
+        catch (e) { if (prev) Keychain.set(TOKEN_KEY, prev); else Keychain.remove(TOKEN_KEY); await js(`__setWebUp(${!!prev},${JSON.stringify("올리지 못했어요: " + (e.message || e) + " — 토큰과 권한을 확인해 주세요")})`); }
+      })();
+      return false;
     }
     if (u.startsWith("fishing://sites?find=")) { // 선사 추가: 주소에서 배 찾기
       findSite(decodeURIComponent(u.slice("fishing://sites?find=".length)), (code) => wv.evaluateJavaScript(code)).then((res) => js(`__sitesFound(${JSON.stringify(res)})`));
