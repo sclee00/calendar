@@ -708,7 +708,10 @@ window.__setChecking=(on,msg)=>{chk.classList.toggle("busy",!!on);chkTxt.textCon
 const SCRIPT_NAME="낚시배예약현황"; // 아이폰 Scriptable에 저장한 스크립트 이름
 chk.href="scriptable:///run/"+encodeURIComponent(SCRIPT_NAME);
 chk.removeAttribute("target");
-chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))window.__host("fishing://check?ym="+MONTHS[st.m])}};
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+chk.onclick=e=>{if(IN_APP){e.preventDefault();if(!chk.classList.contains("busy"))window.__host("fishing://check?ym="+MONTHS[st.m])}
+  else if(!IOS){e.preventDefault();notice("웹 캘린더는 직접 확인하지 못해요(선사 사이트가 막아 둠). 아이폰에서는 이 버튼이 Scriptable 앱을 열어 확인하고, '웹 캘린더에도 올리기'를 켜 두면 결과가 여기에도 올라와요. PC에서는 PC 버전(exe)을 쓰세요.")}
+  else notice("아이폰 앱에서 확인해요. '웹 캘린더에도 올리기'를 켜 두었다면 확인이 끝난 뒤 이 페이지를 새로 고치면 반영돼요.")};
 // 설정(아이폰 앱 안에서만): 처음 열 때 확인할 기간
 if(IN_APP){
   const sb=document.getElementById("setBtn"),sp=document.getElementById("setPanel"),sel=document.getElementById("aheadSel");
