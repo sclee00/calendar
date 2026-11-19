@@ -517,7 +517,7 @@ async function checkNotices(parse, getText, state) {
           if (cfg.on && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
           startWatch();
           if (cfg.on) setTimeout(runWatch, 1500);
-          __setChecking(false, cfg.on ? `빈자리 알림을 켰어요. 이 탭이 열려 있는 동안 ${cfg.interval >= 60 ? cfg.interval / 60 + "시간" : cfg.interval + "분"}마다 확인합니다.` : "빈자리 알림을 껐어요.");
+          __setChecking(false, cfg.on ? `빈자리 알림을 켰어요. 이 탭이 열려 있는 동안 ${cfg.interval >= 60 && cfg.interval % 60 === 0 ? cfg.interval / 60 + "시간" : cfg.interval + "분"}마다 확인합니다.` : "빈자리 알림을 껐어요.");
         }
       } catch (e) {}
     } else if (u.startsWith("fishing://mine?")) { // 내 예약 표시/해제
@@ -741,7 +741,7 @@ function watchMessage(fresh) {
     clearInterval(watchTimer); watchTimer = null;
     const cfg = settings.watch || {};
     if (!cfg.on) return;
-    const min = Math.max(30, +cfg.interval || 60);
+    const min = Math.max(10, +cfg.interval || 60);
     watchTimer = setInterval(runWatch, min * 60e3);
   }
   window.addEventListener("focus", () => { document.title = document.title.replace(/^\(\d+\) /, ""); });

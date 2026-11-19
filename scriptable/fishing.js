@@ -780,7 +780,7 @@ async function watch() {
   counts.forEach((x) => line(`${short[x.type]} 새로 ${x.fresh}` + (x.now === null ? "" : ` · 조건 안 ${x.now}`), 10, "#18232c"));
   msg.lines.slice(0, 3).forEach((t) => line(t, 11, "#13a06e", true));
   if (errors.length) line("일부 사이트 확인 실패", 10, "#e0473a");
-  done(Math.max(0.5, (+cfg.interval || 60) / 60));
+  done(Math.max(10 / 60, (+cfg.interval || 60) / 60));
   return countsText(counts);
 }
 

@@ -299,7 +299,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <div class="wbox" id="wBox">
       <label class="wsw"><input type="checkbox" id="wOn"> <b>빈자리 알림</b> <span class="muted">내가 확인하지 않아도 정해 둔 간격으로 확인하고 알려줘요</span></label>
       <div class="wform" id="wForm">
-        <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option><option value="720">12시간</option><option value="1440">24시간</option><option value="2880">48시간</option></select></label>
+        <label>확인 간격 <select id="wInt"><option value="30">30분</option><option value="60">1시간</option><option value="120">2시간</option><option value="180">3시간</option><option value="360">6시간</option><option value="720">12시간</option><option value="1440">24시간</option><option value="2880">48시간</option><option value="custom">직접 입력…</option></select></label>
+        <label id="wIntCustom" hidden><input id="wIntMin" type="number" min="10" max="10080" step="5" inputmode="numeric" style="width:6em;font:inherit;padding:3px 6px"> 분마다 <small class="muted">(10분~7일)</small></label>
         <div id="wRules" class="wrules"></div>
       </div>
       <button class="btn" id="wSave" type="button"><span>알림 설정 저장</span></button>
@@ -818,7 +819,10 @@ if(IN_APP){
     const modes=Array.isArray(W.modes)?W.modes:(W.mode&&W.mode!=="any"?String(W.mode).split("+"):[]);const r={};(modes.length?modes:["any"]).forEach(m=>{r[m]={on:true,...base}});return r};
   const RULES=W.rules&&typeof W.rules==="object"?W.rules:(W.from!==undefined||W.mode?legacy():{});
   $("wOn").checked=!!W.on;$("wForm").hidden=!W.on;$("wOn").onchange=()=>{$("wForm").hidden=!$("wOn").checked};
-  $("wInt").value=String(W.interval||60);
+  // 확인 간격: 목록에 있으면 고르고, 없으면 '직접 입력'에 분으로 넣어 둔다
+  const iv=+W.interval||60,inList=[...$("wInt").options].some(o=>o.value===String(iv));
+  $("wInt").value=inList?String(iv):"custom";$("wIntMin").value=iv;$("wIntCustom").hidden=inList;
+  $("wInt").addEventListener("change",()=>{const c=$("wInt").value==="custom";$("wIntCustom").hidden=!c;if(c)$("wIntMin").focus()});
   const chips=(el,items,set,label)=>{el.innerHTML="";items.forEach(v=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label(v);
     b.setAttribute("aria-pressed",String(set.has(v)));b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);if(!set.size)set.add(v);b.setAttribute("aria-pressed",String(set.has(v)))};el.append(b)})};
   const forms={};
@@ -858,7 +862,8 @@ if(IN_APP){
   };
   $("wSave").onclick=()=>{
     const rules={};KINDS.forEach(([k])=>{rules[k]=forms[k]()});
-    const cfg={on:$("wOn").checked,interval:+$("wInt").value,rules};
+    const ivOf=()=>{if($("wInt").value!=="custom")return +$("wInt").value;const n=Math.round(+$("wIntMin").value);return Number.isFinite(n)&&n>0?Math.min(10080,Math.max(10,n)):60};
+    const cfg={on:$("wOn").checked,interval:ivOf(),rules};$("wIntMin").value=cfg.interval;
     window.__watch=cfg;render();window.__host("fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg)));
   };
 }
