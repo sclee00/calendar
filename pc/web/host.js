@@ -408,7 +408,7 @@ async function checkNotices(parse, getText, state) {
       const sv = (d, k) => { const [mk, name, day] = k.split("|"); const b = d && d.months && d.months[mk] && d.months[mk].boats && d.months[mk].boats[name]; return b ? b.s[+day - 1] : undefined; };
       (settings.mine || []).filter((k) => sv(data, k) === "x" && sv(old, k) !== "x").forEach((k) => {
         const [mk, name, day] = k.split("|");
-        if ("Notification" in window && Notification.permission === "granted") new Notification("내 예약 출조 취소", { body: `${+mk.slice(5)}/${day} ${name} — 사이트에서 확인하세요`, requireInteraction: true });
+        if ("Notification" in window && Notification.permission === "granted") notify("내 예약 출조 취소", { body: `${+mk.slice(5)}/${day} ${name} — 사이트에서 확인하세요`, requireInteraction: true });
       });
     } catch (e) {}
     old = data;
@@ -417,7 +417,7 @@ async function checkNotices(parse, getText, state) {
     let msg = errors.length ? `일부 사이트를 읽지 못했습니다: ${errors.join(" / ")}` : "";
     const newItems = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
     if (newItems.length && "Notification" in window && Notification.permission === "granted") {
-      try { new Notification(`새로 생긴 자리 ${newItems.length}곳`, { body: newItems.slice(0, 6).join("\n"), tag: "fishing-check" }); } catch (e) {}
+      try { notify(`새로 생긴 자리 ${newItems.length}곳`, { body: newItems.slice(0, 6).join("\n"), tag: "fishing-check" }); } catch (e) {}
     }
     if ((data.opened || []).length) msg = `새로 열린 예약 ${data.opened.length}곳: ${data.opened.slice(0, 6).join(", ")}${data.opened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
     if (data.reopened.length) msg = `취소로 다시 열린 자리 ${data.reopened.length}곳: ${data.reopened.slice(0, 6).join(", ")}${data.reopened.length > 6 ? " 외" : ""}` + (msg ? " · " + msg : "");
@@ -482,6 +482,37 @@ async function checkNotices(parse, getText, state) {
     } catch (e) { return { ok: false, error: e.message || String(e) }; }
   }
 
+  // ── 알림 소리: 기본(윈도우 알림음) / 멜로디(이 화면에서 직접 연주) / 소리 없음 ──
+  const MELODY = {
+    piano_success: [[523, .16], [659, .16], [784, .16], [1047, .45]],
+    event: [[1319, .32], [1047, .5], [1319, .32], [1047, .6]],
+    complete: [[392, .12], [523, .12], [659, .12], [784, .4]],
+    accept: [[1319, .25], [1047, .5]],
+    alert: [[880, .14], [0, .08], [880, .14], [0, .08], [880, .14], [0, .3], [880, .14], [0, .08], [880, .14], [0, .08], [880, .14]],
+  };
+  let actx = null;
+  const audio = () => { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {} return actx; };
+  document.addEventListener("pointerdown", audio); // 브라우저는 한 번이라도 누른 뒤에야 소리를 낼 수 있음
+  const soundKey = () => ((settings && settings.watch && settings.watch.sound) || (window.__watch && window.__watch.sound) || "default");
+  window.__playMelody = (k, test) => {
+    if (k === "off") return;
+    if (k === "default" || !MELODY[k]) { if (test && "Notification" in window && Notification.permission === "granted") new Notification("알림 소리 시험", { body: "윈도우 기본 알림음으로 알려요" }); return; }
+    const c = audio(); if (!c) return;
+    let t = c.currentTime + .05;
+    for (const [f, d] of MELODY[k]) {
+      if (f) { const o = c.createOscillator(), g = c.createGain(); o.type = k === "alert" ? "square" : "sine"; o.frequency.value = f;
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(k === "alert" ? .12 : .3, t + .02); g.gain.exponentialRampToValueAtTime(.001, t + d);
+        o.connect(g).connect(c.destination); o.start(t); o.stop(t + d + .05); }
+      t += d;
+    }
+  };
+  function notify(title, opts) {
+    const k = soundKey();
+    const n = new Notification(title, { ...(opts || {}), silent: k !== "default" });
+    window.__playMelody(k);
+    return n;
+  }
+
   window.__host = function (u) {
     u = String(u || "");
     if (u.startsWith("fishing://sites?find=")) { // 선사 추가: 주소에서 배 찾기
@@ -533,7 +564,7 @@ async function checkNotices(parse, getText, state) {
         if (!("Notification" in window) || Notification.permission !== "granted") { __setChecking(false, "브라우저 알림이 꺼져 있습니다. 주소창 왼쪽 자물쇠 → 알림 '허용' 후 다시 눌러 보세요."); return; }
         [[`빈자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)], [`취소로 다시 열린 자리 ${Math.min(3, lines.length)}곳`, lines.slice(0, 3)],
           [`예약이 새로 열림 ${Math.max(1, lines.length - 3)}곳`, lines.length > 3 ? lines.slice(3) : lines.slice(0, 1)]]
-          .forEach(([t, b], i) => setTimeout(() => new Notification("[미리보기] " + t, { body: b.join("\n"), tag: "fishing-preview-" + i }), 1500 + i * 1500));
+          .forEach(([t, b], i) => setTimeout(() => notify("[미리보기] " + t, { body: b.join("\n"), tag: "fishing-preview-" + i }), 1500 + i * 1500));
         __setChecking(false, "PC 알림 예시 3개를 보냈습니다. 화면 오른쪽 아래(윈도우 알림)를 보세요.");
       };
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(show); else show();
@@ -728,7 +759,7 @@ function watchMessage(fresh) {
       if (res.fresh.length) {
         const msg = watchMessage(res.fresh);
         if ("Notification" in window && Notification.permission === "granted") {
-          const n = new Notification(msg.title, { body: msg.body, tag: "fishing-seats", requireInteraction: true });
+          const n = notify(msg.title, { body: msg.body, tag: "fishing-seats", requireInteraction: true });
           n.onclick = () => { window.focus(); n.close(); };
         }
         __setChecking(false, `${msg.title}: ${msg.lines.join(", ")} — ${summary}`);
@@ -766,7 +797,7 @@ function watchMessage(fresh) {
     const pre = `${tm.getUTCFullYear()}-${pad(tm.getUTCMonth() + 1)}|`, td = tm.getUTCDate(), done = settings.mineReminded || {};
     const due = (settings.mine || []).filter((k) => k.startsWith(pre) && +k.split("|")[2] === td && !done[k]);
     if (!due.length || !("Notification" in window) || Notification.permission !== "granted") return;
-    due.forEach((k) => { const [, name] = k.split("|"); new Notification("내일 출조", { body: `${tm.getUTCMonth() + 1}/${td} ${name} · 준비물·날씨 확인하세요` }); done[k] = 1; });
+    due.forEach((k) => { const [, name] = k.split("|"); notify("내일 출조", { body: `${tm.getUTCMonth() + 1}/${td} ${name} · 준비물·날씨 확인하세요` }); done[k] = 1; });
     settings = { ...settings, mineReminded: done }; store.put("settings", settings);
   })();
   // 시작할 때 알림 조건(캘린더 확인이 끝난 뒤), 그다음 선사 공지사항 확인
@@ -780,7 +811,7 @@ function watchMessage(fresh) {
       __setNotices(res.sites, res.fresh.length);
       if (res.fresh.length && "Notification" in window && Notification.permission === "granted") {
         res.fresh.slice(0, 5).forEach((n, i) => setTimeout(() => {
-          const x = new Notification(`${n.site} 새 공지`, { body: n.title, tag: "notice-" + i, requireInteraction: true });
+          const x = notify(`${n.site} 새 공지`, { body: n.title, tag: "notice-" + i, requireInteraction: true });
           x.onclick = () => { window.open(n.url, "fish_notice"); x.close(); };
         }, i * 800));
       }

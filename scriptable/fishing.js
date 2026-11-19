@@ -457,6 +457,9 @@ async function upload(data) {
 // ───────────────────────── 빈자리 알림(위젯·단축어 자동화) ─────────────────────────
 // 켜 두면 홈 화면 위젯이 새로 고쳐질 때 정해 둔 조건의 날짜만 확인하고, 맞는 자리가 생기면 알림을 보낸다.
 const WATCH_STATE = fm.joinPath(DIR, "watch-state.json");
+// 알림 소리 (설정 → 빈자리 알림 → 알림 소리). Scriptable이 가진 소리 이름, 'off'면 소리 없음
+const SOUNDS = ["default", "piano_success", "event", "complete", "accept", "alert", "failure", "popup", "piano_error"];
+function alertSound() { const k = ((loadSettings().watch || {}).sound) || "default"; return k === "off" ? null : SOUNDS.includes(k) ? k : "default"; }
 const spOf2 = (c) => (c === "f" ? "f" : c === "u" ? "u" : "j");
 const strip = (h) => (h || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
@@ -771,7 +774,7 @@ async function watch() {
     const n = new Notification();
     n.title = msg.title; n.body = msg.body;
     n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
-    n.sound = "default";
+    n.sound = alertSound();
     await n.schedule();
   }
   const now = new Date(Date.now() + 9 * 3600e3);
@@ -842,7 +845,7 @@ const mineText = (k) => { const [mk, name, d] = k.split("|"); const dt = keyDate
 async function notifyMine(cancelled, settings) {
   for (const k of cancelled) {
     const n = new Notification();
-    n.title = "내 예약 출조 취소"; n.body = mineText(k) + " — 사이트에서 확인하세요"; n.sound = "default";
+    n.title = "내 예약 출조 취소"; n.body = mineText(k) + " — 사이트에서 확인하세요"; n.sound = alertSound();
     n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
     await n.schedule();
   }
@@ -853,7 +856,7 @@ async function notifyMine(cancelled, settings) {
   const due = mineKeys(settings).filter((k) => k.startsWith(tk) && +k.split("|")[2] === td && !done[k]);
   for (const k of due) {
     const n = new Notification();
-    n.title = "내일 출조"; n.body = mineText(k) + " · 준비물·날씨 확인하세요"; n.sound = "default";
+    n.title = "내일 출조"; n.body = mineText(k) + " · 준비물·날씨 확인하세요"; n.sound = alertSound();
     n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
     await n.schedule();
     done[k] = 1;
@@ -889,7 +892,7 @@ async function backgroundCheck() {
       const n = new Notification();
       n.title = `새로 생긴 자리 ${items.length}곳`;
       n.body = items.slice(0, 6).join("\n") + (items.length > 6 ? `\n외 ${items.length - 6}곳` : "");
-      n.sound = "default";
+      n.sound = alertSound();
       n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
       await n.schedule();
     }
@@ -1133,7 +1136,7 @@ async function main(wv, say, wvClosed) {
         const n = new Notification();
         n.title = `새로 생긴 자리 ${newItems.length}곳`;
         n.body = newItems.slice(0, 6).join("\n") + (newItems.length > 6 ? `\n외 ${newItems.length - 6}곳` : "");
-        n.sound = "default";
+        n.sound = alertSound();
         n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
         n.schedule();
       } catch (e) {}
@@ -1169,7 +1172,7 @@ async function main(wv, say, wvClosed) {
       const msg = watchMessage(res.fresh);
       if (res.fresh.length) {
         const n = new Notification();
-        n.title = msg.title; n.body = msg.body; n.sound = "default";
+        n.title = msg.title; n.body = msg.body; n.sound = alertSound();
         n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
         await n.schedule();
       }
@@ -1194,7 +1197,7 @@ async function main(wv, say, wvClosed) {
       await js(`__setNotices(${JSON.stringify(res.sites)}, ${res.fresh.length})`);
       for (const n of res.fresh.slice(0, 5)) {
         const x = new Notification();
-        x.title = `${n.site} 새 공지`; x.body = n.title; x.sound = "default";
+        x.title = `${n.site} 새 공지`; x.body = n.title; x.sound = alertSound();
         x.openURL = n.url; // 누르면 그 공지가 열림
         await x.schedule();
       }
@@ -1298,6 +1301,15 @@ async function main(wv, say, wvClosed) {
       } catch (e) {}
       return false;
     }
+    if (u.startsWith("fishing://sound")) { // 알림 소리 들어 보기: 4초 뒤 그 소리로 알림 하나
+      const k = (/k=([a-z_]+)/.exec(u) || [])[1] || "default";
+      const n = new Notification();
+      n.title = "알림 소리 시험"; n.body = k === "off" ? "소리 없이 이렇게 와요" : "이 소리로 알려요"; n.sound = k === "off" ? null : SOUNDS.includes(k) ? k : "default";
+      n.setTriggerDate(new Date(Date.now() + 4000));
+      n.schedule();
+      js(`__setChecking(false, "4초 뒤 시험 알림이 와요. 홈 화면으로 나가서 들어 보세요. (무음 모드면 소리가 안 나요 — 저장해야 실제 알림에 적용돼요)")`);
+      return false;
+    }
     if (u.startsWith("fishing://testnote")) { // 미리보기: 실제 아이폰 알림 모양 보기
       let lines = [];
       try { lines = JSON.parse(decodeURIComponent((/d=([^&]*)/.exec(u) || [])[1] || "[]")); } catch (e) {}
@@ -1309,7 +1321,7 @@ async function main(wv, say, wvClosed) {
       ];
       samples.forEach(([t, b], i) => {
         const n = new Notification();
-        n.title = "[미리보기] " + t; n.body = b.join("\n"); n.sound = "default";
+        n.title = "[미리보기] " + t; n.body = b.join("\n"); n.sound = alertSound();
         n.openURL = "scriptable:///run/" + encodeURIComponent(Script.name());
         n.setTriggerDate(new Date(Date.now() + 5000 + i * 2500));
         n.schedule();
