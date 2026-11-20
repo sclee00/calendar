@@ -794,14 +794,38 @@ function watchMessage(fresh) {
     const K = "fishWinLast";
     const now = () => ({ x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight });
     const place = (b) => { try { window.moveTo(b.x, b.y); window.resizeTo(b.w, b.h); window.moveTo(b.x, b.y); } catch (e) {} };
+    // 다른 모니터로 옮기려면 크롬의 '창 관리' 허용이 필요하다 (한 번 허용해 두면 다음부터 저절로)
+    const onThisScreen = (b) => { const l = screen.availLeft || 0, t = screen.availTop || 0; return b.x >= l - 20 && b.y >= t - 20 && b.x < l + screen.availWidth && b.y < t + screen.availHeight; };
+    const wmState = async () => { try { return (await navigator.permissions.query({ name: "window-management" })).state; } catch (e) { return "unsupported"; } };
+    const allowScreens = async (ask) => {
+      if (!("getScreenDetails" in window)) return false;
+      const st = await wmState();
+      if (st === "denied" || (st === "prompt" && !ask)) return false;
+      try { await window.getScreenDetails(); return true; } catch (e) { return false; }
+    };
+    const apply = async (b, ask) => { if (!onThisScreen(b)) await allowScreens(ask); place(b); };
     let last = null; try { last = JSON.parse(localStorage.getItem(K) || "null"); } catch (e) {}
-    if (last && last.w > 300 && last.h > 300) place(last);
+    if (last && last.w > 300 && last.h > 300) apply(last, false);
     else { const w = Math.min(1280, screen.availWidth), h = Math.min(960, screen.availHeight); place({ x: (screen.availLeft || 0) + Math.round((screen.availWidth - w) / 2), y: (screen.availTop || 0) + Math.round((screen.availHeight - h) / 2), w, h }); }
     let sig = "";
     const save = () => { const b = now(), s = JSON.stringify(b); if (s !== sig && b.w > 300 && b.h > 300) { sig = s; try { localStorage.setItem(K, s); } catch (e) {} } };
     setTimeout(() => { save(); setInterval(save, 2000); }, 1500); // 창을 옮겨도 알려 주는 신호가 없어 2초마다 확인
     addEventListener("resize", () => { clearTimeout(save._t); save._t = setTimeout(save, 400); });
     addEventListener("beforeunload", save);
+    // 모니터가 여러 대이고 아직 허용 전이면 위쪽에 '다른 모니터 허용' 버튼을 보여 준다
+    (async () => {
+      const multi = screen.isExtended === true || ("getScreenDetails" in window && screen.isExtended !== false);
+      const st = await wmState();
+      if (!multi || st === "granted" || st === "unsupported") return;
+      const q = document.getElementById("pcQuit"); if (!q) return;
+      q.insertAdjacentHTML("beforebegin", `<button type="button" id="pcScreens" style="margin-left:6px;font:inherit;font-size:12px;padding:2px 10px;border:1px solid #1f5f99;color:#1f5f99;background:#fff;border-radius:999px;cursor:pointer" title="창을 다른 모니터에 두었을 때 다음에도 그 모니터에서 열리게 해요">🖥 다른 모니터 허용</button>`);
+      const btn = document.getElementById("pcScreens");
+      btn.onclick = async () => {
+        const ok = await allowScreens(true);
+        if (ok) { btn.remove(); __setChecking(false, "창 관리를 허용했어요. 이제 다른 모니터에 둔 창도 다음에 그 자리에서 열려요."); if (last && last.w > 300) place(last); }
+        else __setChecking(false, (await wmState()) === "denied" ? "창 관리가 막혀 있어요. 창 왼쪽 위 아이콘(ⓘ 또는 자물쇠) → 사이트 설정 → '창 관리'를 허용으로 바꾼 뒤 다시 눌러 주세요." : "허용 창이 뜨면 '허용'을 눌러 주세요.");
+      };
+    })();
   })();
   // 프로그램 끝내기: 탭만 닫으면 몇 분 동안 뒤에서 켜져 있어 exe를 바꿔 넣을 수 없으므로 바로 끝낸다
   try { document.getElementById("pcQuit").onclick = (e) => { e.preventDefault(); fetch("/api/quit", { method: "POST" }).catch(() => {}).finally(() => { document.body.innerHTML = '<p style="font:16px sans-serif;padding:40px;text-align:center">낚시배 빈자리 PC 버전을 끝냈어요. 이 탭을 닫아도 돼요.<br><small>다시 쓰려면 fishing-seats.exe를 실행하세요.</small></p>'; }); }; } catch (e) {}
