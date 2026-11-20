@@ -204,12 +204,9 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .chips button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}
 .dayacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
 /* 날짜 칸의 작은 버튼: 🚫 출조불가 · ⭐ 골라 보기 (켜져 있으면 늘 보이고, 꺼진 건 PC는 칸에 마우스를 올리거나 휴대폰은 날짜를 고르면 보임) */
-.dact{margin-left:auto;display:inline-flex;gap:1px}
-.dact i{font-style:normal;font-size:11px;line-height:1;padding:2px 1px;border-radius:4px;cursor:pointer;opacity:0;filter:grayscale(1);transition:opacity .15s}
-.cell:hover .dact i,.cell.sel .dact i{opacity:.4}
-.dact i:hover{opacity:1!important;background:rgba(0,0,0,.06)}
-.dact i.on{opacity:1!important;filter:none}
-@media (hover:none){.cell:hover .dact i{opacity:0}.cell.sel .dact i{opacity:.45}.dact i.on{opacity:1!important}}
+.cell{position:relative}.dact{position:absolute;top:3px;right:3px;display:inline-flex;gap:1px;z-index:1} /* 칸 모양을 바꾸지 않게 오른쪽 위에 겹쳐 둠 */
+.dact{font-size:10px;line-height:1;pointer-events:none}
+.cell .dn{cursor:pointer}.cell:not(.past) .num{text-decoration:underline dotted transparent}.cell:not(.past) .dn:hover .num{text-decoration-color:var(--muted)}
 .pickempty{grid-column:1/-1;padding:30px 16px;text-align:center;color:var(--muted)}
 .nav svg{width:16px;height:16px}
 .wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
@@ -237,7 +234,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:520px){
   .cell{min-height:84px;padding:3px 1px 5px;gap:3px}
   .dn{gap:2px}.ml{display:none}
-  .blkt{font-size:9.5px;padding:1px 2px;white-space:nowrap;letter-spacing:-.3px;margin-top:3px}.dact i{font-size:10px;padding:1px 0}
+  .blkt{font-size:9.5px;padding:1px 2px;white-space:nowrap;letter-spacing:-.3px;margin-top:3px}.dact{top:2px;right:1px;font-size:9px}
   .wx{font-size:9.5px;gap:1px;justify-content:space-between}.wx .wi{font-size:10px}.wx .ww{padding:0 2px}.wx .ww small,.wx .wlo{display:none} /* 폰: 아이콘·최고기온·풍속만 */
   .tp{font-size:9px;padding:0 3px;line-height:13px}
   .tiles .t{width:22px;height:15px}
@@ -570,7 +567,7 @@ function cellHtml(mk,d,showMo,showWd){
   const k=`${mk}-${pad(d)}`,[Y,M]=mk.split("-").map(Number),w=new Date(Y,M-1,d).getDay(),T=(TIDE[mk]||[])[d-1];
   const blk=k>=TODAY&&isBlk(k);
   let rows=blk?[]:cellRows(mk,d);
-  const wdB=BLK.wd.has(w),act=k>=TODAY?`<span class="dact"><i data-da="blk" class="${blk?"on":""}" title="${wdB?`매주 ${WD[w]}요일 출조불가 (설정에서 바꿈)`:blk?"출조불가 해제":"출조불가로 표시"}">🚫</i><i data-da="pick" class="${PICK.days.has(k)?"on":""}" title="${PICK.days.has(k)?"골라 보기에서 빼기":"골라 보기에 넣기"}">⭐</i></span>`:"";
+  const act=k>=TODAY&&PICK.days.has(k)?`<span class="dact" title="골라 보기에 넣은 날">⭐</span>`:""; // 표시만 (바꾸기는 날짜 숫자를 눌러서)
   let h=`<div class="dn"><span class="num${showMo?" md":""}">${showMo?`${M}/${d}`:d}</span>${showWd?`<span class="wdl">${WD[w]}</span>`:""}${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}${act}</div>${wxLine(k)}<div class="tiles">`;
   if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
   if(blk)h+=`<span class="blkt">출조불가</span>`;
@@ -784,11 +781,9 @@ document.querySelectorAll(".vsw button").forEach(b=>b.onclick=()=>{st.view=b.dat
 })();
 document.getElementById("goToday").onclick=()=>{st.wk=0;st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
 document.getElementById("onlyOpen").onclick=()=>{st.only=!st.only;render()};
-// 날짜 칸의 🚫·⭐ 버튼
-document.getElementById("grid").addEventListener("click",e=>{const i=e.target.closest&&e.target.closest("[data-da]");if(!i)return;e.stopPropagation();e.preventDefault();
-  const k=cellKey(i);if(!k)return;
-  if(i.dataset.da==="blk"&&BLK.wd.has(dateOf(k).getDay())){notice(`매주 ${WD[dateOf(k).getDay()]}요일은 출조불가로 정해 두었어요. ⚙ 설정 → 출조불가 날에서 바꿀 수 있어요.`);return}
-  dayToggle(k,i.dataset.da)},true);
+// 날짜(숫자 줄)를 누르면 그 날을 고르고 옵션(출조불가·골라 보기)을 띄움. 칸의 다른 곳을 누르면 지금처럼 그 날 목록만
+document.getElementById("grid").addEventListener("click",e=>{const r=e.target.closest&&e.target.closest(".dn");if(!r)return;const k=cellKey(r);if(!k||k<TODAY)return;
+  e.stopPropagation();e.preventDefault();const mk=k.slice(0,7),d=+k.slice(8);if(MONTHS.includes(mk)){st.m=MONTHS.indexOf(mk);st.day=d;render()}daySheet(k)},true);
 // 출조불가·골라 보기 설정 칸
 drawBlkPick();
 const addDate=(inp,set,save)=>{const v=document.getElementById(inp).value;if(!v||v<TODAY)return;set.add(v);document.getElementById(inp).value="";save()};
