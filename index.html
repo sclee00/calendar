@@ -326,10 +326,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <select id="modeSel" aria-label="확인 방식"><option value="fast">빠른 모드 — 그림 속 어종은 읽지 않음</option><option value="normal">보통 모드 — 그림 속 어종도 읽음(OCR)</option></select>
     <small>빠른 모드는 그림(포스터)으로만 올라온 어종을 새로 읽지 않아 확인이 빨라요. 전에 읽어 둔 그림은 그대로 어종이 나와요. 보통 모드는 새 그림이 있으면 글자를 읽느라 그만큼 오래 걸려요.</small>
     </div></details>
-    <details class="fold" id="fold-web" hidden><summary>웹 캘린더에도 올리기 <small class="fs" id="sumWeb"></small></summary><div class="fbody">
+    <details class="fold" id="fold-web" hidden><summary>GitHub 연결 (웹 올리기·아이폰↔PC 동기화) <small class="fs" id="sumWeb"></small></summary><div class="fbody">
       <span id="webState" style="flex-basis:100%"></span>
+      <span style="flex-basis:100%"><b>동기화</b> · <small id="syncState">확인 중…</small></span>
       <div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="sbtn" id="webSet">토큰 넣기</button><button type="button" class="mini" id="webOff">끄기(토큰 지우기)</button></div>
-      <small style="flex-basis:100%">켜 두면 아이폰에서 확인할 때마다 그 결과를 sclee00.github.io/calendar 에도 올려요. 그러면 웹 캘린더에서도 칸피싱·제일바다낚시까지 최신으로 보여요. 'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 GitHub 토큰이 필요해요.</small>
+      <small style="flex-basis:100%">토큰을 넣어 두면 ① 확인할 때마다 그 결과를 sclee00.github.io/calendar 에도 올리고(칸피싱·제일바다낚시까지 최신), ② 출조불가·골라 보기·내 예약·빈자리 알림·선사·배 필터 같은 설정을 아이폰과 PC가 서로 맞춰요. 아이폰과 PC에 <b>같은 토큰</b>을 넣으세요. 설정 내용은 그 토큰으로 암호화해서 저장해요. 'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 GitHub 토큰이면 돼요.</small>
     </div></details>
     <details class="fold" id="fold-sites" hidden><summary>선사 관리 <small class="fs" id="sumSites"></small></summary><div class="fbody">
       <div id="siteList" style="flex-basis:100%;display:flex;flex-direction:column;gap:10px"></div>
@@ -474,7 +475,7 @@ const flagCls=r=>(r.re?" reopen":r.nw?" fresh":"")+(isMine(r.mk,r.b.name,r.d)?" 
 let MINE=new Set();try{MINE=new Set(window.__mine||(window.__settings&&window.__settings.mine)||JSON.parse(localStorage.getItem("mine")||"[]"))}catch(e){}
 const MINE_CAL=new Set(window.__mineCal||[]);
 const isMine=(mk,name,d)=>MINE.has(`${mk}|${name}|${d}`)||MINE_CAL.has(`${mk}|${name}|${d}`);
-function saveMine(changed,on){try{localStorage.setItem("mine",JSON.stringify([...MINE]))}catch(e){}
+function saveMine(changed,on){syncTouch("mine");try{localStorage.setItem("mine",JSON.stringify([...MINE]))}catch(e){}
   if(IN_APP)location.href="fishing://mine?list="+encodeURIComponent(JSON.stringify([...MINE]))+"&key="+encodeURIComponent(changed||"")+"&on="+(on?1:0)}
 function toggleMine(k){const on=!MINE.has(k);on?MINE.add(k):MINE.delete(k);saveMine(k,on);render()}
 function myCard(){
@@ -531,7 +532,7 @@ function keyRow(){spRow();siteRow();
   }
   document.getElementById("onlyOpen").setAttribute("aria-pressed",st.only);
 }
-function saveOn(){try{const off=BOATS.filter(b=>!st.on.has(b.id)).map(b=>b.name);let prev=[];try{prev=JSON.parse(localStorage.getItem("boatsOff")||"[]")||[]}catch(e){}
+function saveOn(){syncTouch("boatsOff");try{const off=BOATS.filter(b=>!st.on.has(b.id)).map(b=>b.name);let prev=[];try{prev=JSON.parse(localStorage.getItem("boatsOff")||"[]")||[]}catch(e){}
   // 지금 목록에 없는 배(선사를 뺀 경우)의 숨김 표시는 남겨 둔다
   localStorage.setItem("boatsOff",JSON.stringify([...new Set([...off,...prev.filter(n=>!BOATS.some(b=>b.name===n))])]))}catch(e){}}
 // ── 날씨: 인천(연안부두) 예보 — Open-Meteo(무료, 키 없음). 1시간 동안 이 기기에 저장해 둠 ──
@@ -570,12 +571,12 @@ const blkColor=k=>okCol(BLK.notes[k]?BLK.colors[k]:(wdOn(k)&&!BLK.days.has(k)?BL
 const blkNote=k=>BLK.notes[k]||(wdOn(k)&&!BLK.days.has(k)?BLK.wdNote:"")||""; // 출조불가 이유
 const dateOf=k=>{const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
 const isBlk=k=>BLK.days.has(k)||wdOn(k);
-function saveBlk(){const days=[...BLK.days].filter(k=>k>=TODAY).sort(),notes={};const colors={},grp={};days.forEach(k=>{if(BLK.grp[k])grp[k]=BLK.grp[k];const n=String(BLK.notes[k]||"").trim().slice(0,40);if(n){notes[k]=n;if(okCol(BLK.colors[k]))colors[k]=BLK.colors[k]}});BLK.notes=notes;BLK.colors=colors;BLK.grp=grp;
+function saveBlk(){syncTouch("blocked");const days=[...BLK.days].filter(k=>k>=TODAY).sort(),notes={};const colors={},grp={};days.forEach(k=>{if(BLK.grp[k])grp[k]=BLK.grp[k];const n=String(BLK.notes[k]||"").trim().slice(0,40);if(n){notes[k]=n;if(okCol(BLK.colors[k]))colors[k]=BLK.colors[k]}});BLK.notes=notes;BLK.colors=colors;BLK.grp=grp;
   BLK.allow=new Set([...BLK.allow].filter(k=>k>=TODAY&&BLK.wd.has(dateOf(k).getDay())&&!BLK.days.has(k)));
   const v={days,weekdays:[...BLK.wd].sort(),allow:[...BLK.allow].sort(),notes,colors,grp,wdNote:String(BLK.wdNote||"").trim().slice(0,40),wdColor:okCol(BLK.wdColor)};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
   if(window.__inScriptable)location.href="fishing://settings?blocked="+encodeURIComponent(JSON.stringify(v));render();drawBlkPick()}
 const PICK=(()=>{const p=lsGet("pickView",{});return{wd:new Set(Array.isArray(p.wd)?p.wd:[5,6,0]),days:new Set(p.days||[]),weeks:+p.weeks||8}})();
-function savePick(){lsPut("pickView",{wd:[...PICK.wd],days:[...PICK.days].filter(k=>k>=TODAY).sort(),weeks:PICK.weeks});render();drawBlkPick()}
+function savePick(){syncTouch("pick");lsPut("pickView",{wd:[...PICK.wd],days:[...PICK.days].filter(k=>k>=TODAY).sort(),weeks:PICK.weeks});render();drawBlkPick()}
 function pickDays(){const out=[],t=dateOf(TODAY);for(let i=0;i<PICK.weeks*7;i++){const x=new Date(t);x.setDate(t.getDate()+i);const k=`${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`;
   if(!MONTHS.includes(k.slice(0,7)))continue;if((PICK.wd.has(x.getDay())||PICK.days.has(k))&&!isBlk(k))out.push(x)}return out}
 // 기간: from~to 사이의 날짜들 (오늘 이전은 빼고, 최대 1년)
@@ -599,6 +600,64 @@ function drawBlkPick(){
   const sb=document.getElementById("sumBlk");if(sb)sb.textContent=[wl&&`매주 ${wl}`,n&&`날짜 ${n}일`].filter(Boolean).join(" · ")||"없음";
   const sp=document.getElementById("sumPick");if(sp)sp.textContent=`${[...PICK.wd].sort().map(i=>WD[i]).join("·")||"요일 없음"}${PICK.days.size?` + 날짜 ${[...PICK.days].filter(k=>k>=TODAY).length}일`:""} · ${PICK.weeks}주`;
 }
+
+// ── 아이폰·PC 설정 동기화 ──
+// 출조불가·골라 보기·내 예약·빈자리 알림·선사·배 필터·확인 방식·확인 기간·위젯 배·날씨 표시를 맞춘다.
+// 바뀐 항목마다 시각을 적어 두고, 더 나중에 바뀐 쪽을 쓴다. 내용은 GitHub 토큰으로 만든 열쇠로 암호화해서 저장소(data/sync.enc.json)에 둔다.
+const SYNC_KEYS=["blocked","pick","mine","watch","sites","boatsOff","mode","ahead","widgetBoats","showWx"];
+let SYM=lsGet("syncMeta",{}),SYNC_TOK=null,syncT=null,syncBusy=false;
+const syncGet=k=>({blocked:()=>window.__blocked||lsGet("blocked",null),pick:()=>lsGet("pickView",null),mine:()=>[...MINE],watch:()=>window.__watch||null,
+  sites:()=>window.__sites||(window.__settings&&window.__settings.sites)||null,boatsOff:()=>lsGet("boatsOff",null),mode:()=>window.__mode||"fast",ahead:()=>+window.__ahead||1,
+  widgetBoats:()=>window.__wboats||null,showWx:()=>SHOW_WX}[k]());
+function syncTouch(k){SYM[k]=Date.now();lsPut("syncMeta",SYM);if(SYNC_TOK){clearTimeout(syncT);syncT=setTimeout(()=>syncPush(),1500)}}
+const b64=u=>btoa(String.fromCharCode(...new Uint8Array(u))),unb64=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
+async function syncKey(tok){const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("fishing-sync:"+tok));return crypto.subtle.importKey("raw",h,"AES-GCM",false,["encrypt","decrypt"])}
+async function syncSeal(tok,obj){const iv=crypto.getRandomValues(new Uint8Array(12)),k=await syncKey(tok);
+  const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},k,new TextEncoder().encode(JSON.stringify(obj)));return JSON.stringify({v:1,at:new Date().toISOString(),iv:b64(iv),ct:b64(ct)})}
+async function syncOpen(tok,txt){const j=JSON.parse(txt),k=await syncKey(tok);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(j.iv)},k,unb64(j.ct));return JSON.parse(new TextDecoder().decode(pt))}
+function syncState(){const o={};SYNC_KEYS.forEach(k=>{o[k]={at:SYM[k]||0,v:syncGet(k)}});return o}
+async function syncPush(){if(!SYNC_TOK||syncBusy)return;try{const blob=await syncSeal(SYNC_TOK,{data:syncState()});location.href="fishing://sync?push="+encodeURIComponent(blob)}catch(e){console.log("sync push",e)}}
+// 받은 값을 이 화면과 앱 설정에 넣는다
+function syncApply(R){
+  const app={};let sitesChanged=false;
+  for(const[k,{v}]of Object.entries(R)){
+    if(k==="blocked"){const b=v||{};BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number));BLK.notes=b.notes||{};BLK.colors=b.colors||{};BLK.grp=b.grp||{};BLK.allow=new Set(b.allow||[]);BLK.wdNote=String(b.wdNote||"");BLK.wdColor=String(b.wdColor||"");lsPut("blocked",b);window.__blocked=b;app.blocked=b}
+    else if(k==="pick"){const p=v||{};PICK.wd=new Set(Array.isArray(p.wd)?p.wd:[5,6,0]);PICK.days=new Set(p.days||[]);PICK.weeks=+p.weeks||8;lsPut("pickView",p)}
+    else if(k==="mine"){MINE=new Set(Array.isArray(v)?v:[]);try{localStorage.setItem("mine",JSON.stringify([...MINE]))}catch(e){}app.mine=[...MINE]}
+    else if(k==="watch"){window.__watch=v;app.watch=v}
+    else if(k==="sites"){const cur=JSON.stringify(syncGet("sites")||null);if(JSON.stringify(v||null)!==cur){sitesChanged=true;app.sites=v}}
+    else if(k==="boatsOff"){if(Array.isArray(v)){lsPut("boatsOff",v);st.on=new Set(BOATS.filter(b=>!v.includes(b.name)).map(b=>b.id))}}
+    else if(k==="mode"){window.__mode=v==="normal"?"normal":"fast";app.mode=window.__mode;const ms=document.getElementById("modeSel");if(ms)ms.value=window.__mode}
+    else if(k==="ahead"){if(+v>0){window.__ahead=+v;app.ahead=+v;const a=document.getElementById("aheadSel");if(a)a.value=String(v)}}
+    else if(k==="widgetBoats"){window.__wboats=v;app.widgetBoats=v}
+    else if(k==="showWx"){SHOW_WX=v!==false;try{localStorage.setItem("showWx",SHOW_WX?"1":"0")}catch(e){}const cb=document.getElementById("showWx");if(cb)cb.checked=SHOW_WX}
+  }
+  if(Object.keys(app).length&&IN_APP)location.href="fishing://sync?apply="+encodeURIComponent(JSON.stringify(app)); // 앱 쪽 설정도 바꿈(선사가 바뀌면 화면을 다시 그림)
+  if(!sitesChanged){drawBlkPick();render()}
+}
+// 앱·PC가 저장소에서 받은 내용을 넘겨 줌 (txt=null: 아직 없음)
+window.__syncRemote=async(txt,tok,err)=>{
+  SYNC_TOK=tok||null;const say=m=>{const el=document.getElementById("syncState");if(el)el.textContent=m};
+  if(!tok){say("꺼짐 — GitHub 토큰을 넣으면 아이폰·PC 설정을 맞춰요.");return}
+  if(err){say("동기화 확인 실패: "+err);return}
+  let R=null,bad=false;if(txt){try{R=(await syncOpen(tok,txt)).data||null}catch(e){bad=true}}
+  const take={};let needPush=!R;
+  if(R)for(const k of SYNC_KEYS){const r=R[k],la=SYM[k]||0;if(!r)continue;
+    if(!la&&["blocked","mine","pick"].includes(k)){ // 처음 맞출 때: 두 기기 것을 합침
+      const lv=syncGet(k),rv=r.v;let mv=rv;
+      if(k==="mine")mv=[...new Set([...(rv||[]),...(lv||[])])];
+      else if(k==="pick"&&lv&&rv)mv={...rv,days:[...new Set([...(rv.days||[]),...(lv.days||[])])]};
+      else if(k==="blocked"&&lv&&rv)mv={...rv,days:[...new Set([...(rv.days||[]),...(lv.days||[])])],weekdays:[...new Set([...(rv.weekdays||[]),...(lv.weekdays||[])])],notes:{...(lv.notes||{}),...(rv.notes||{})},colors:{...(lv.colors||{}),...(rv.colors||{})},grp:{...(lv.grp||{}),...(rv.grp||{})},allow:rv.allow||[]};
+      take[k]={v:mv};SYM[k]=Date.now();if(JSON.stringify(mv)!==JSON.stringify(rv))needPush=true;continue}
+    if(r.at>la){take[k]=r;SYM[k]=r.at}else if(la>r.at)needPush=true}
+  if(R)for(const k of SYNC_KEYS)if(!R[k]&&SYM[k])needPush=true;
+  lsPut("syncMeta",SYM);
+  if(Object.keys(take).length){syncBusy=true;syncApply(take);syncBusy=false}
+  say(bad?"저장된 동기화 내용을 이 토큰으로 열 수 없어요(다른 토큰으로 저장됨). 이 기기 설정으로 새로 저장해요 — 아이폰과 PC에 같은 토큰을 넣어 주세요."
+    :`켜짐 — 아이폰·PC 설정을 맞추고 있어요. (${new Date().toTimeString().slice(0,5)} 확인${Object.keys(take).length?` · ${Object.keys(take).length}가지 받아 옴`:""})`);
+  if(needPush){clearTimeout(syncT);syncT=setTimeout(()=>syncPush(),800)}
+};
 // 4주 보기: 오늘이 들어 있는 주(일요일)부터 4주. ‹ ›는 한 주씩
 function weekStart(){const t=new Date(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8));t.setDate(t.getDate()-t.getDay()+7*(st.wk||0));return t}
 function fourWeeks(){const s=weekStart();return Array.from({length:28},(_,i)=>{const x=new Date(s);x.setDate(s.getDate()+i);return x})}
@@ -938,16 +997,16 @@ if(IN_APP){
   sb.onclick=()=>{sp.hidden=!sp.hidden;sb.setAttribute("aria-expanded",String(!sp.hidden))};
   for(let n=1;n<=12;n++){const o=document.createElement("option");o.value=n;o.textContent=n===1?"1개월 (이번 달)":n+"개월";sel.append(o)}
   sel.value=String(window.__ahead||1);
-  sel.onchange=()=>{const n=+sel.value;window.__ahead=n;location.href="fishing://settings?ahead="+n};
+  sel.onchange=()=>{const n=+sel.value;window.__ahead=n;syncTouch("ahead");location.href="fishing://settings?ahead="+n};
   if(!window.__mode&&window.__settings&&window.__settings.mode)window.__mode=window.__settings.mode;
   const ms=document.getElementById("modeSel");ms.value=window.__mode==="normal"?"normal":"fast";
-  ms.onchange=()=>{window.__mode=ms.value;foldSums();location.href="fishing://settings?mode="+ms.value};
+  ms.onchange=()=>{window.__mode=ms.value;syncTouch("mode");foldSums();location.href="fishing://settings?mode="+ms.value};
 }
-// 웹 캘린더에도 올리기 (아이폰 앱에서만)
-if(IN_APP&&!window.__isPC){
+// GitHub 연결: 웹 캘린더에도 올리기(아이폰) + 아이폰·PC 설정 동기화
+if(IN_APP){
   document.getElementById("fold-web").hidden=false;
   window.__setWebUp=(on,msg)=>{window.__webUp=!!on;document.getElementById("sumWeb").textContent=on?"켜짐":"꺼짐";
-    document.getElementById("webState").innerHTML=(on?'<b style="color:#1f9d55">켜짐</b> — 확인할 때마다 웹 캘린더에도 올려요.':'<b>꺼짐</b> — 아이폰에서만 봐요.')+(msg?`<br><small>${String(msg).replace(/[<>&]/g,"")}</small>`:"");
+    document.getElementById("webState").innerHTML=(on?'<b style="color:#1f9d55">켜짐</b> — 확인할 때마다 웹 캘린더에도 올리고, 설정을 다른 기기와 맞춰요.':'<b>꺼짐</b> — 이 기기에서만 봐요.')+(msg?`<br><small>${String(msg).replace(/[<>&]/g,"")}</small>`:"");
     document.getElementById("webOff").hidden=!on;document.getElementById("webSet").textContent=on?"토큰 바꾸기":"토큰 넣기"};
   window.__setWebUp(window.__webUp);
   document.getElementById("webSet").onclick=()=>{location.href="fishing://token?set"};
@@ -989,7 +1048,7 @@ if(IN_APP){
       if(cur){cur.boats=boats;cur.label=label}else work.push({id:"s"+Date.now().toString(36),label,kind:r.kind,host:r.host,step:r.step,boats});
       found.innerHTML="";document.getElementById("siteUrl").value="";draw();dirty()};
   };
-  save.onclick=()=>{location.href="fishing://sites?save="+encodeURIComponent(JSON.stringify(work))};
+  save.onclick=()=>{window.__sites=work;syncTouch("sites");location.href="fishing://sites?save="+encodeURIComponent(JSON.stringify(work))};
   const rs=document.getElementById("siteReset");let rsArm=false;
   rs.onclick=()=>{if(!rsArm){rsArm=true;rs.textContent="한 번 더 누르면 기본 선사 다섯 곳으로 되돌려요";setTimeout(()=>{rsArm=false;rs.textContent="기본 선사로 되돌리기"},4000);return}location.href="fishing://sites?save=null"};
   draw();
@@ -1003,7 +1062,7 @@ if(IN_APP&&!window.__isPC){
   let on=new Set(Array.isArray(window.__wboats)&&window.__wboats.length?window.__wboats.filter(n=>ALL.includes(n)):ALL);
   const boxes=[];
   const sum=()=>{document.getElementById("sumWidget").textContent=on.size===ALL.length?"모든 배":on.size<=3?[...on].join("·"):`배 ${on.size}척`};
-  const save=()=>{sum();location.href="fishing://settings?wboats="+encodeURIComponent([...on].join("|"))};
+  const save=()=>{sum();window.__wboats=[...on];syncTouch("widgetBoats");location.href="fishing://settings?wboats="+encodeURIComponent([...on].join("|"))};
   WS.forEach(([u,lb])=>{const g=document.createElement("div");g.innerHTML=`<b style="font-size:12px;color:var(--mut,#6a7983)">${lb}</b>`;
     const row=document.createElement("div");row.style.cssText="display:flex;flex-wrap:wrap;gap:4px 12px";
     BOATS.filter(b=>b.u===u).forEach(b=>{const l=document.createElement("label");l.innerHTML=`<input type="checkbox"> ${b.name}`;const c=l.firstChild;c.checked=on.has(b.name);boxes.push([c,b.name]);
@@ -1021,7 +1080,7 @@ load(false);
     ["fold-ahead","fold-watch","fold-mine"].forEach(id=>{const e=document.getElementById(id);if(e)e.hidden=true})}
   const cb=document.getElementById("showWx");cb.checked=SHOW_WX;
   const sum=()=>{document.getElementById("sumView").textContent=SHOW_WX?"날씨 켜짐":"날씨 꺼짐"};sum();
-  cb.onchange=()=>{SHOW_WX=cb.checked;try{localStorage.setItem("showWx",SHOW_WX?"1":"0")}catch(e){}sum();SHOW_WX?loadWx():render()};
+  cb.onchange=()=>{SHOW_WX=cb.checked;syncTouch("showWx");try{localStorage.setItem("showWx",SHOW_WX?"1":"0")}catch(e){}sum();SHOW_WX?loadWx():render()};
   loadWx();
 })();
 // 빈자리 알림 설정
@@ -1084,7 +1143,7 @@ if(IN_APP){
     const rules={};KINDS.forEach(([k])=>{rules[k]=forms[k]()});
     const ivOf=()=>{if($("wInt").value!=="custom")return +$("wInt").value;const n=Math.round(+$("wIntMin").value);return Number.isFinite(n)&&n>0?Math.min(10080,Math.max(10,n)):60};
     const cfg={on:$("wOn").checked,interval:ivOf(),sound:$("wSound").value,rules};$("wIntMin").value=cfg.interval;
-    window.__watch=cfg;render();location.href="fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg));
+    window.__watch=cfg;syncTouch("watch");render();location.href="fishing://watch?cfg="+encodeURIComponent(JSON.stringify(cfg));
   };
 }
 if(!IN_APP){

@@ -440,6 +440,26 @@ async function askToken() {
   else Keychain.set(ASKED_KEY, "1");
 }
 
+// ── GitHub 저장소 파일 읽기·쓰기 (동기화용) ──
+const ghHeaders = (token) => ({ Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+async function ghGet(token, path) {
+  const g = new Request(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`); g.headers = ghHeaders(token);
+  const j = await g.loadJSON(); const code = g.response.statusCode;
+  if (code === 404) return { sha: null, text: null };
+  if (code === 401) throw new Error("토큰이 맞지 않음");
+  if (code >= 300) throw new Error((j && j.message) || `HTTP ${code}`);
+  return { sha: j.sha, text: j.content ? Data.fromBase64String(j.content.replace(/\n/g, "")).toRawString() : null };
+}
+async function ghPut(token, path, text, message) {
+  const cur = await ghGet(token, path);
+  const p = new Request(`https://api.github.com/repos/${REPO}/contents/${path}`);
+  p.method = "PUT"; p.headers = { ...ghHeaders(token), "Content-Type": "application/json" };
+  p.body = JSON.stringify({ message, content: Data.fromString(text).toBase64String(), sha: cur.sha || undefined });
+  const res = await p.loadJSON(); const code = p.response.statusCode;
+  if (code >= 300) throw new Error((res && res.message) || `HTTP ${code}`);
+}
+const SYNC_PATH = "data/sync.enc.json";
+
 async function upload(data) {
   if (!Keychain.contains(TOKEN_KEY)) return null;
   const token = Keychain.get(TOKEN_KEY);
@@ -1077,6 +1097,7 @@ async function run() {
   try { fm.writeString(ALIVE, String(Date.now())); } catch (e) {}
 }
 
+let syncPullRef = null, syncQueue = Promise.resolve();
 async function main(wv, say, wvClosed) {
   // 마지막 결과(아이폰에 저장된 것, 없으면 웹 캘린더의 것)로 캘린더를 먼저 띄운다
   let old = null; try { old = fm.fileExists(CACHE) ? JSON.parse(fm.readString(CACHE)) : null; } catch (e) {}
@@ -1228,9 +1249,35 @@ async function main(wv, say, wvClosed) {
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list); return false;
     }
+    if (u.startsWith("fishing://sync?push=")) { // 동기화: 화면이 만든 암호화 설정을 저장소에 올림 (차례대로)
+      const blob = decodeURIComponent(u.slice("fishing://sync?push=".length));
+      syncQueue = syncQueue.then(async () => {
+        const tok = Keychain.contains(TOKEN_KEY) ? Keychain.get(TOKEN_KEY) : null; if (!tok) return;
+        try { await ghPut(tok, SYNC_PATH, blob, "설정 동기화 (아이폰)"); } catch (e) { console.log("동기화 올리기 실패: " + e.message); }
+      });
+      return false;
+    }
+    if (u.startsWith("fishing://sync?apply=")) { // 동기화: 다른 기기에서 바뀐 설정을 이 아이폰 설정에 넣음
+      (async () => {
+        let a = {}; try { a = JSON.parse(decodeURIComponent(u.slice("fishing://sync?apply=".length))) || {}; } catch (e) {}
+        const st0 = loadSettings(), nx = { ...st0 };
+        for (const k of ["blocked", "mine", "watch", "mode", "ahead", "widgetBoats"]) if (k in a) nx[k] = a[k];
+        if ("sites" in a) nx.sites = Array.isArray(a.sites) && a.sites.length ? a.sites : null;
+        saveSettings(nx);
+        if ("blocked" in a) applyBlocked(a.blocked);
+        if ("sites" in a) { // 선사가 바뀌면 화면을 새 목록으로 다시 그리고 다시 확인
+          applySites(nx.sites);
+          await wv.loadHTML(html.replace("<head>", "<head>" + injectNow()), PAGE);
+          await wv.evaluateJavaScript(parserSrc());
+          checked.clear(); want(first);
+          if (syncPullRef) syncPullRef();
+        }
+      })();
+      return false;
+    }
     if (u.startsWith("fishing://token")) { // 웹 캘린더에도 올리기: 토큰 넣기·지우기
       (async () => {
-        if (/off/.test(u)) { if (Keychain.contains(TOKEN_KEY)) Keychain.remove(TOKEN_KEY); Keychain.set(ASKED_KEY, "1"); return js(`__setWebUp(false,"토큰을 지웠어요")`); }
+        if (/off/.test(u)) { if (Keychain.contains(TOKEN_KEY)) Keychain.remove(TOKEN_KEY); Keychain.set(ASKED_KEY, "1"); await js(`__syncRemote(null,null)`); return js(`__setWebUp(false,"토큰을 지웠어요")`); }
         const a = new Alert();
         a.title = "GitHub 토큰";
         a.message = "'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 토큰(github_pat_…)을 붙여 넣으세요.";
@@ -1243,6 +1290,7 @@ async function main(wv, say, wvClosed) {
         const prev = Keychain.contains(TOKEN_KEY) ? Keychain.get(TOKEN_KEY) : null;
         Keychain.set(TOKEN_KEY, t);
         await js(`__setWebUp(true,"올려 보는 중…")`);
+        if (syncPullRef) syncPullRef();
         try { await upload(old); await js(`__setWebUp(true,"웹 캘린더에 올렸어요 (${old.updatedAt ? old.updatedAt.slice(5, 16).replace("T", " ") : ""} 결과)")`); }
         catch (e) { if (prev) Keychain.set(TOKEN_KEY, prev); else Keychain.remove(TOKEN_KEY); await js(`__setWebUp(${!!prev},${JSON.stringify("올리지 못했어요: " + (e.message || e) + " — 토큰과 권한을 확인해 주세요")})`); }
       })();
@@ -1261,6 +1309,7 @@ async function main(wv, say, wvClosed) {
         await wv.loadHTML(html.replace("<head>", "<head>" + injectNow()), PAGE);
         await wv.evaluateJavaScript(parserSrc());
         checked.clear(); want(first);
+        if (syncPullRef) syncPullRef();
       })();
       return false;
     }
@@ -1353,6 +1402,15 @@ async function main(wv, say, wvClosed) {
   await wv.loadHTML(html.replace("<head>", "<head>" + injectNow()), PAGE);
   await wv.evaluateJavaScript(parserSrc());
   console.log("캘린더 표시 완료, 확인 시작");
+  // 아이폰·PC 설정 동기화: 저장소의 암호화된 설정을 받아 화면에 넘김 (화면이 합치고, 바뀐 게 있으면 다시 올려 달라고 함)
+  const syncPull = async () => {
+    const tok = Keychain.contains(TOKEN_KEY) ? Keychain.get(TOKEN_KEY) : null;
+    if (!tok) return js(`__syncRemote(null,null)`);
+    try { const r = await ghGet(tok, SYNC_PATH); await js(`__syncRemote(${JSON.stringify(r.text)},${JSON.stringify(tok)})`); }
+    catch (e) { await js(`__syncRemote(null,${JSON.stringify(tok)},${JSON.stringify(e.message || String(e))})`); }
+  };
+  syncPullRef = syncPull;
+  syncPull();
   // 화면 지킴이: 캘린더 화면이 하얗게 비어 버리면(화면을 그리는 부분이 멈추거나 꺼짐) 다시 그린다
   let viewDone = false, bad = 0;
   const guard = async () => {

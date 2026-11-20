@@ -422,6 +422,7 @@ async function checkNotices(parse, getText, state) {
     old = data;
     await store.put("seats", data);
     __applySeats(data);
+    if (ghTok()) ghLater(() => uploadSeats(data)); // 웹 캘린더에도 올리기
     let msg = errors.length ? `일부 사이트를 읽지 못했습니다: ${errors.join(" / ")}` : "";
     const newItems = [...data.reopened.map((x) => "취소로 다시 열림 · " + x), ...(data.opened || []).map((x) => "새로 열림 · " + x)];
     if (newItems.length && "Notification" in window && Notification.permission === "granted") {
@@ -521,8 +522,59 @@ async function checkNotices(parse, getText, state) {
     return n;
   }
 
+  // ── GitHub 연결: 웹 캘린더에 올리기 + 아이폰·PC 설정 동기화 (토큰은 이 PC의 설정 파일에만) ──
+  const REPO = "sclee00/calendar", SYNC_PATH = "data/sync.enc.json";
+  const ghTok = () => (settings && settings.ghToken) || null;
+  const ghH = (t) => ({ Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+  const utf8b64 = (str) => { const b = new TextEncoder().encode(str); let s2 = ""; for (let i = 0; i < b.length; i += 0x8000) s2 += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s2); };
+  const b64utf8 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
+  async function ghGet(t, path) {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?t=${Date.now()}`, { headers: ghH(t), cache: "no-store" });
+    if (r.status === 404) return { sha: null, text: null };
+    if (r.status === 401) throw new Error("토큰이 맞지 않음");
+    const j = await r.json(); if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`);
+    return { sha: j.sha, text: j.content ? b64utf8(j.content) : null };
+  }
+  async function ghPut(t, path, text, message) {
+    const cur = await ghGet(t, path);
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...ghH(t), "Content-Type": "application/json" }, body: JSON.stringify({ message, content: utf8b64(text), sha: cur.sha || undefined }) });
+    if (!r.ok) { let m = ""; try { m = (await r.json()).message; } catch (e) {} throw new Error(m || `HTTP ${r.status}`); }
+  }
+  let ghQueue = Promise.resolve();
+  const ghLater = (fn) => { ghQueue = ghQueue.then(fn).catch((e) => console.log("GitHub", e)); return ghQueue; };
+  async function syncPull() {
+    const t = ghTok();
+    if (!t) return window.__syncRemote && window.__syncRemote(null, null);
+    try { const r = await ghGet(t, SYNC_PATH); window.__syncRemote(r.text, t); } catch (e) { window.__syncRemote(null, t, e.message || String(e)); }
+  }
+  async function uploadSeats(data) { const t = ghTok(); if (!t || !data) return; await ghPut(t, "data/seats.json", JSON.stringify(data), `PC 확인 ${String(data.updatedAt || "").slice(5, 16).replace("T", " ")}`); }
+  window.__webUp = !!ghTok();
+  setTimeout(() => { try { window.__setWebUp && window.__setWebUp(!!ghTok()); } catch (e) {} syncPull(); }, 1200);
+
   window.__host = function (u) {
     u = String(u || "");
+    if (u.startsWith("fishing://sync?push=")) { const blob = decodeURIComponent(u.slice("fishing://sync?push=".length)); const t = ghTok(); if (t) ghLater(() => ghPut(t, SYNC_PATH, blob, "설정 동기화 (PC)")); return; }
+    if (u.startsWith("fishing://sync?apply=")) {
+      let a = {}; try { a = JSON.parse(decodeURIComponent(u.slice("fishing://sync?apply=".length))) || {}; } catch (e) {}
+      const nx = { ...settings };
+      for (const k of ["blocked", "mine", "watch", "mode", "ahead", "widgetBoats"]) if (k in a) nx[k] = a[k];
+      if ("sites" in a) nx.sites = Array.isArray(a.sites) && a.sites.length ? a.sites : null;
+      settings = nx; if ("blocked" in a) applyBlocked(a.blocked); if ("watch" in a) window.__watch = a.watch;
+      store.put("settings", settings).then(() => { if ("sites" in a) location.reload(); });
+      return;
+    }
+    if (u.startsWith("fishing://token")) {
+      if (/off/.test(u)) { settings = { ...settings }; delete settings.ghToken; store.put("settings", settings); window.__setWebUp(false, "토큰을 지웠어요"); window.__syncRemote(null, null); return; }
+      const t = (prompt("GitHub 토큰(github_pat_…)을 붙여 넣으세요.\n아이폰에 넣은 것과 같은 토큰을 넣으면 설정이 서로 맞춰져요.") || "").trim();
+      if (!t) return;
+      window.__setWebUp(!!ghTok(), "토큰 확인 중…");
+      ghGet(t, "data/seats.json").then(async () => {
+        settings = { ...settings, ghToken: t }; await store.put("settings", settings);
+        window.__setWebUp(true, "토큰을 저장했어요. 설정을 맞추고 웹 캘린더에도 올려요.");
+        syncPull(); ghLater(() => uploadSeats(old));
+      }).catch((e) => window.__setWebUp(!!ghTok(), "토큰이 맞지 않아요: " + (e.message || e)));
+      return;
+    }
     if (u.startsWith("fishing://sites?find=")) { // 선사 추가: 주소에서 배 찾기
       findSite(decodeURIComponent(u.slice("fishing://sites?find=".length))).then((r) => { try { window.__sitesFound(r); } catch (e) {} });
       return;
