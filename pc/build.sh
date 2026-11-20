@@ -18,6 +18,8 @@ PY
 mkdir -p dist
 VER="${PC_VERSION:-$(date +%Y%m%d.%H%M)}"
 [ -f go.mod ] || go mod init fishing-pc >/dev/null 2>&1
+# Windows 실행 파일 아이콘(물고기): icon/fish.ico → rsrc_windows_amd64.syso (저장소에 함께 넣어 둠, 아이콘을 바꿨을 때만 다시 만듦)
+if [ ! -f rsrc_windows_amd64.syso ] || [ icon/fish.ico -nt rsrc_windows_amd64.syso ]; then go run github.com/akavel/rsrc@v0.10.2 -ico icon/fish.ico -o rsrc_windows_amd64.syso; fi
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui -X main.version=$VER" -o "dist/fishing-seats.exe" .
 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$VER" -o "dist/fishing-seats-mac-apple" .
 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$VER" -o "dist/fishing-seats-mac-intel" .
