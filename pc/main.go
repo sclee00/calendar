@@ -119,6 +119,7 @@ func main() {
 		w.Header().Set("Cache-Control", "no-store") // 새 버전으로 바꾼 뒤 옛 코드가 남지 않게
 		hostJS.ServeHTTP(w, r)
 	})
+	mux.HandleFunc("/icon-180.png", func(w http.ResponseWriter, r *http.Request) { hostJS.ServeHTTP(w, r) }) // 창 아이콘(물고기)
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method", http.StatusMethodNotAllowed)
@@ -332,7 +333,44 @@ func readStore(name string) string {
 	return string(b)
 }
 
+// 캘린더 열기: 이 PC의 Chrome이나 Edge로 '앱 창'(탭·주소창 없는 별도 창)으로 연다. 둘 다 없으면 기본 브라우저.
+// 창 크기·위치는 화면(host.js)이 기억했다가 다음에 그대로 연다.
+func appBrowsers() []string {
+	switch runtime.GOOS {
+	case "windows":
+		pf, pf86, local := os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")
+		var out []string
+		for _, base := range []string{pf, pf86, local} {
+			if base != "" {
+				out = append(out, filepath.Join(base, `Google\Chrome\Application\chrome.exe`))
+			}
+		}
+		for _, base := range []string{pf86, pf, local} {
+			if base != "" {
+				out = append(out, filepath.Join(base, `Microsoft\Edge\Application\msedge.exe`))
+			}
+		}
+		return out
+	case "darwin":
+		return []string{"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"}
+	}
+	return nil
+}
+
 func openBrowser(u string) {
+	app := u
+	if strings.Contains(app, "?") {
+		app += "&app=1"
+	} else {
+		app += "?app=1"
+	}
+	for _, b := range appBrowsers() {
+		if _, err := os.Stat(b); err == nil {
+			if exec.Command(b, "--app="+app).Start() == nil {
+				return
+			}
+		}
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

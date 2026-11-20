@@ -15,6 +15,7 @@ s = s.replace("'지금 확인'을 누르면 아이폰의 Scriptable 앱이 열�
 s = s.replace("<title>", "<title>PC · ", 1)
 open("web/index.html", "w", encoding="utf-8").write(s)
 PY
+cp icon/fish.png web/icon-180.png # 앱 창·탭 아이콘도 물고기
 mkdir -p dist
 VER="${PC_VERSION:-$(date +%Y%m%d.%H%M)}"
 [ -f go.mod ] || go mod init fishing-pc >/dev/null 2>&1
