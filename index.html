@@ -16,7 +16,7 @@
 <style>
 /* Layout: one month per view (Sun–Sat); date + tidal-range pill (blue→red) on top of each day; boats in a fixed order as species-shaped badges, green = seats, red = full, gray = cancelled */
 :root{
-  --bg:#f3f5f7; --surface:#ffffff; --ink:#18232c; --muted:#6a7983; --line:#dde3e7; --past:#f8f9fa;
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#18232c; --muted:#6a7983; --line:#dde3e7; --past:#f8f9fa; --even:#f3f7fb; --even-past:#eef2f6;
   --accent:#1f5f99; --accent-ink:#ffffff;
   --open:#13a06e; --open-ink:#ffffff;
   --full:#e0473a; --full-ink:#ffffff;
@@ -26,12 +26,12 @@
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22;
+  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a;
   --accent:#8cc0ef; --accent-ink:#0f161b;
   --open:#2fbf8a; --open-ink:#06231a; --full:#ef6a5d; --full-ink:#2a0a06;
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22;
+  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a;
   --accent:#8cc0ef; --accent-ink:#0f161b;
   --open:#2fbf8a; --open-ink:#06231a; --full:#ef6a5d; --full-ink:#2a0a06;
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}
@@ -203,6 +203,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cell:nth-child(7n){border-right:0}
 .cell.blank{background:var(--past);cursor:default}
 .cell.past{background:var(--past)}
+.cell.even{background:var(--even)}.cell.even.past{background:var(--even-past)} /* 4주 보기: 짝수 달은 아주 옅게 */
 .cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
 .dn{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
 .wx{display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.1;white-space:nowrap;overflow:hidden;min-width:0}
@@ -525,7 +526,7 @@ function grid(){
     days.forEach((x,i)=>{const mk=`${x.getFullYear()}-${pad(x.getMonth()+1)}`,d=x.getDate();
       if(!MONTHS.includes(mk)){const e=document.createElement("div");e.className="cell blank";g.append(e);return}
       const c=cellHtml(mk,d,d===1||i===0);const el=document.createElement("button");el.type="button";el.id="c-"+mk+"-"+pad(d);
-      el.className=c.cls+(mk===selMk&&d===st.day?" sel":"");el.innerHTML=c.h;el.onclick=()=>{st.m=MONTHS.indexOf(mk);st.day=d;render()};g.append(el)});
+      el.className=c.cls+(x.getMonth()%2===1?" even":"")+(mk===selMk&&d===st.day?" sel":"");el.innerHTML=c.h;el.onclick=()=>{st.m=MONTHS.indexOf(mk);st.day=d;render()};g.append(el)});
     return;
   }
   const mk=MONTHS[st.m],[Y,M]=mk.split("-").map(Number);
