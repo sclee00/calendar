@@ -13,6 +13,10 @@
     { id: "secret", label: "시크릿 버스", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
   ];
   let SITES = [], KEEP = [], NOTICE_SITES = [];
+  // 출조불가 날 (설정 → 출조불가 날): 이 날들은 사이트를 읽지 않고, 알림도 보내지 않는다
+  let BLOCKED = { days: new Set(), wd: new Set() };
+  function applyBlocked(b) { b = b || {}; BLOCKED = { days: new Set(Array.isArray(b.days) ? b.days : []), wd: new Set((Array.isArray(b.weekdays) ? b.weekdays : []).map(Number)) }; }
+  function isBlocked(y, m, d) { return BLOCKED.days.has(`${y}-${pad(m)}-${pad(d)}`) || BLOCKED.wd.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay()); }
   // 선사 목록 적용: boats는 이름 목록(SITES[].boats)과 자세한 정보(SITES[].info: 이름·아이콘 글자·배 번호)로 나눠 둔다
   function applySites(list) {
     const ok = Array.isArray(list) && list.some((x) => x && x.host && Array.isArray(x.boats) && x.boats.length);
@@ -27,6 +31,7 @@
       : { id: x.id, label: x.label, kind: "tf", home: `https://${x.host}/` });
   }
   applySites(window.__settings && window.__settings.sites);
+  applyBlocked(window.__settings && window.__settings.blocked);
   const PARSE_V = 10; // 읽는 규칙이 바뀌면 올림
   const pad = (n) => String(n).padStart(2, "0");
   const todayKST = () => { const t = new Date(Date.now() + 9 * 3600e3); return [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()]; };
@@ -198,7 +203,7 @@
   async function scrapeSite(site, monthList, progress) {
     const out = {}, need = [];
     const put = (y, m, d, name, s, sp, no, fn) => {
-      if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
+      if (!name || s === null || isPast(y, m, d) || isBlocked(y, m, d)) return; // 오늘 이후만, 출조불가 날은 건너뜀
       const k = ymKey(y, m), L = daysIn(y, m);
       out[k] = out[k] || {};
       const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
@@ -217,6 +222,7 @@
         let found = 0;
         const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
         for (let d = d0; d <= daysIn(y, m); d += site.step || 4) {
+          { const st = site.step || 4, e = Math.min(daysIn(y, m), d + st - 1); let all = true; for (let x = d; x <= e; x++) if (!isBlocked(y, m, x)) { all = false; break; } if (all) continue; } // 이 페이지의 날이 모두 출조불가면 읽지 않음
           const res = parse(site.kind, await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
           res.rows.forEach(([dd, n, s, sp, , fn, ims]) => { put(y, m, dd, n, s, sp, null, fn); if (sp === "u" && ims && ims.length) need.push([ymKey(y, m), n, dd, ims]); });
           found += res.found;
@@ -265,11 +271,13 @@
           if (!nb) continue;
           boats[name] = nb;
           const ob = (prev.boats && prev.boats[name] && prev.boats[name].s) || [];
+          const [ky, km] = k.split("-").map(Number), blk = nb.s.map((_, i) => isBlocked(ky, km, i + 1));
+          nb.s.forEach((v, i) => { if (blk[i] && v === null && ob[i] !== undefined) nb.s[i] = ob[i]; }); // 출조불가 날은 이전 값을 그대로 두고 표시도 안 함
           const pr = (prev.reopen && prev.reopen[name]) || "";
           let flags = "";
           nb.s.forEach((v, i) => {
             const was = pr[i] === "1";
-            const on = typeof v === "number" && v > 0 && (ob[i] === 0 || was);
+            const on = !blk[i] && typeof v === "number" && v > 0 && (ob[i] === 0 || was);
             if (on && !was) reopened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
             flags += on ? "1" : "0";
           });
@@ -279,7 +287,7 @@
           let of = "";
           nb.s.forEach((v, i) => {
             const was = po[i] === "1";
-            const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
+            const on = !blk[i] && typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
             if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
             of += on ? "1" : "0";
           });
@@ -531,6 +539,8 @@ async function checkNotices(parse, getText, state) {
       if (v && !list.some(([y, m]) => y === v[0] && m === v[1]) && ymKey(...v) > ymKey(...first[0])) list.push(v);
       want(list);
     } else if (u.startsWith("fishing://settings")) {
+      const bk = (/blocked=([^&]*)/.exec(u) || [])[1];
+      if (bk !== undefined) { let b = null; try { b = JSON.parse(decodeURIComponent(bk)); } catch (e) {} settings = { ...settings, blocked: b }; store.put("settings", settings); applyBlocked(b); return; }
       const md = (/mode=(fast|normal)/.exec(u) || [])[1];
       if (md) { settings = { ...settings, mode: md }; store.put("settings", settings); window.__mode = md; return; }
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);
@@ -584,7 +594,7 @@ async function checkNotices(parse, getText, state) {
     const dows = Array.isArray(cfg.dows) && cfg.dows.length ? cfg.dows : [0, 1, 2, 3, 4, 5, 6];
     const out = [];
     for (let d = new Date(Math.max(from, today)); d <= to && out.length < 93; d = new Date(d.getTime() + 864e5)) {
-      if (dows.includes(d.getUTCDay())) out.push([d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]);
+      if (dows.includes(d.getUTCDay()) && !isBlocked(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())) out.push([d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]);
     }
     return out;
   }

@@ -16,6 +16,10 @@ const DEFAULT_SITES = [
   { id: "secret", label: "시크릿 버스", kind: "bus", step: 8, host: "secretbus.thefishing.kr", boats: ["전국 시크릿 블랙", "전국 시크릿 레드", "전국 시크릿 3호"] }, // 시크릿 피싱 클럽(낚시 버스)
 ];
 let SITES = [], KEEP = [], NOTICE_SITES = [];
+// 출조불가 날 (설정 → 출조불가 날): 이 날들은 사이트를 읽지 않고, 알림도 보내지 않는다
+let BLOCKED = { days: new Set(), wd: new Set() };
+function applyBlocked(b) { b = b || {}; BLOCKED = { days: new Set(Array.isArray(b.days) ? b.days : []), wd: new Set((Array.isArray(b.weekdays) ? b.weekdays : []).map(Number)) }; }
+function isBlocked(y, m, d) { return BLOCKED.days.has(`${y}-${pad(m)}-${pad(d)}`) || BLOCKED.wd.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay()); }
 // 선사 목록 적용: boats는 이름 목록(SITES[].boats)과 자세한 정보(SITES[].info: 이름·아이콘 글자·배 번호)로 나눠 둔다
 function applySites(list) {
   const ok = Array.isArray(list) && list.some((x) => x && x.host && Array.isArray(x.boats) && x.boats.length);
@@ -55,6 +59,7 @@ const CACHE = fm.joinPath(DIR, "seats.json");
 const SETTINGS = fm.joinPath(DIR, "settings.json");
 const loadSettings = () => { try { return JSON.parse(fm.readString(SETTINGS)) || {}; } catch (e) { return {}; } };
 applySites(loadSettings().sites);
+applyBlocked(loadSettings().blocked);
 const saveSettings = (o) => fm.writeString(SETTINGS, JSON.stringify(o));
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -316,7 +321,7 @@ true;`;
 async function scrapeSite(parser, site, monthList, progress, ocr) {
   const out = {}, need = [];
   const put = (y, m, d, name, s, sp, no, fn) => {
-    if (!name || s === null || isPast(y, m, d)) return; // 오늘 이후만
+    if (!name || s === null || isPast(y, m, d) || isBlocked(y, m, d)) return; // 오늘 이후만, 출조불가 날은 건너뜀
     const k = ymKey(y, m), L = daysIn(y, m);
     out[k] = out[k] || {};
     const b = (out[k][name] = out[k][name] || { s: Array(L).fill(null), sp: Array(L).fill("j") });
@@ -336,6 +341,7 @@ async function scrapeSite(parser, site, monthList, progress, ocr) {
       let found = 0;
       const [ty, tm, td] = todayKST(), d0 = y === ty && m === tm ? td : 1; // 이번 달은 오늘부터
         for (let d = d0; d <= daysIn(y, m); d += site.step || 4) { // 칸피싱은 한 페이지에 8일, 제일은 4일
+          { const st = site.step || 4, e = Math.min(daysIn(y, m), d + st - 1); let all = true; for (let x = d; x <= e; x++) if (!isBlocked(y, m, x)) { all = false; break; } if (all) continue; } // 이 페이지의 날이 모두 출조불가면 읽지 않음
         const res = await parse(await get(`https://${site.host}/index.php?mid=bk&year=${y}&month=${pad(m)}&day=${pad(d)}`), y, m);
         res.rows.forEach(([dd, n, s, sp, , fn, ims]) => { put(y, m, dd, n, s, sp, null, fn); if (sp === "u" && ims && ims.length) need.push([ymKey(y, m), n, dd, ims]); });
         found += res.found;
@@ -387,11 +393,13 @@ function merge(old, results, errors, sources, checked) {
         if (!nb) continue;
         boats[name] = nb;
         const ob = (prev.boats && prev.boats[name] && prev.boats[name].s) || [];
+        const [ky, km] = k.split("-").map(Number), blk = nb.s.map((_, i) => isBlocked(ky, km, i + 1));
+        nb.s.forEach((v, i) => { if (blk[i] && v === null && ob[i] !== undefined) nb.s[i] = ob[i]; }); // 출조불가 날은 이전 값을 그대로 두고 표시도 안 함
         const pr = (prev.reopen && prev.reopen[name]) || "";
         let flags = "";
         nb.s.forEach((v, i) => {
           const was = pr[i] === "1";
-          const on = typeof v === "number" && v > 0 && (ob[i] === 0 || was);
+          const on = !blk[i] && typeof v === "number" && v > 0 && (ob[i] === 0 || was);
           if (on && !was) reopened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
           flags += on ? "1" : "0";
         });
@@ -401,7 +409,7 @@ function merge(old, results, errors, sources, checked) {
         let of = "";
         nb.s.forEach((v, i) => {
           const was = po[i] === "1";
-          const on = typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
+          const on = !blk[i] && typeof v === "number" && v > 0 && flags[i] !== "1" && (was || (monthSeen && (!pb || pb[i] == null || pb[i] === "w")));
           if (on && !was) newlyOpened.push(`${k.slice(5)}/${pad(i + 1)} ${name} ${v}석`);
           of += on ? "1" : "0";
         });
@@ -594,7 +602,7 @@ function watchDays(cfg) {
   const dows = Array.isArray(cfg.dows) && cfg.dows.length ? cfg.dows : [0, 1, 2, 3, 4, 5, 6];
   const out = [];
   for (let d = new Date(Math.max(from, today)); d <= to && out.length < 93; d = new Date(d.getTime() + 864e5)) {
-    if (dows.includes(d.getUTCDay())) out.push([d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]);
+    if (dows.includes(d.getUTCDay()) && !isBlocked(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())) out.push([d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()]);
   }
   return out;
 }
@@ -951,7 +959,7 @@ async function calendarWidget() {
       txt(r, `${m}/${d} ${WD[wd]}`, 12, wd === 0 ? C.sun : wd === 6 ? C.sat : C.ink, i === 0);
       if (mine.has(`${ymKey(y, m)}|${d}`)) txt(r, " ★", 11, C.gold, true);
       r.addSpacer();
-      txt(r, n ? `${n}석` : seen ? "마감" : "–", 12, n ? C.open : C.mute, !!n);
+      if (isBlocked(y, m, d)) txt(r, "출조불가", 11, C.mute); else txt(r, n ? `${n}석` : seen ? "마감" : "–", 12, n ? C.open : C.mute, !!n);
       w.addSpacer(2);
     }
     w.addSpacer();
@@ -985,12 +993,14 @@ async function calendarWidget() {
         cell.layoutVertically(); cell.centerAlignContent();
         const a = cell.addStack(); a.layoutHorizontally(); a.addSpacer(); txt(a, String(d), 12, color, d === cd); a.addSpacer();
         const b = cell.addStack(); b.layoutHorizontally(); b.addSpacer();
-        if (!past && cnt[d]) txt(b, `${cnt[d]}석`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
+        if (!past && isBlocked(cy, cm, d)) txt(b, "불가", 9, C.mute);
+        else if (!past && cnt[d]) txt(b, `${cnt[d]}석`, 10, C.open, true); else txt(b, !past && any[d] ? "마감" : " ", 9, C.mute);
         b.addSpacer();
       } else {
         cell.layoutHorizontally(); cell.centerAlignContent(); cell.addSpacer();
         txt(cell, String(d), 10, color, d === cd);
-        if (!past && cnt[d]) { cell.addSpacer(2); txt(cell, String(cnt[d]), 9, C.open, true); }
+        if (!past && isBlocked(cy, cm, d)) { cell.addSpacer(2); txt(cell, "×", 9, C.mute); }
+        else if (!past && cnt[d]) { cell.addSpacer(2); txt(cell, String(cnt[d]), 9, C.open, true); }
         cell.addSpacer();
       }
     }
@@ -1091,7 +1101,7 @@ async function main(wv, say, wvClosed) {
   // 아이폰 캘린더에서 읽은 내 예약 (기본 켜짐): 화면은 지난번 결과로 먼저 그리고, 다 읽으면 바꿔 넣는다
   const calOn = !settings.mineCal || settings.mineCal.read !== false;
   const calKeys = calOn ? (settings.mineCalKeys || []) : [];
-  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__webUp=${Keychain.contains(TOKEN_KEY)};window.__startYm=${JSON.stringify(((args.queryParameters || {}).ym || "").slice(0, 7))};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
+  const injectNow = () => `<script>window.__inScriptable=true;window.__sites=${JSON.stringify(SITES.map(({ info, ...x }) => ({ ...x, boats: info })))};window.__seatsData=${JSON.stringify(old)};window.__checked=${JSON.stringify([...checked])};window.__ahead=${ahead};window.__blocked=${JSON.stringify(loadSettings().blocked || null)};window.__webUp=${Keychain.contains(TOKEN_KEY)};window.__startYm=${JSON.stringify(((args.queryParameters || {}).ym || "").slice(0, 7))};window.__mode=${JSON.stringify(settings.mode === "normal" ? "normal" : "fast")};window.__wboats=${JSON.stringify(loadSettings().widgetBoats || null)};window.__watch=${JSON.stringify(loadSettings().watch || null)};window.__boatsAll=${JSON.stringify(KEEP)};window.__mine=${JSON.stringify(loadSettings().mine || [])};window.__mineCal=${JSON.stringify(calKeys)};window.__mineOpt=${JSON.stringify(settings.mineCal || {})};</script>`;
   let busy = false;
   const queue = [];
   const js = (code) => wv.evaluateJavaScript(code).catch(() => null);
@@ -1257,6 +1267,8 @@ async function main(wv, say, wvClosed) {
     if (u.startsWith("fishing://settings")) { // 설정: 확인 기간·방식 변경
       const wb = (/wboats=([^&]*)/.exec(u) || [])[1];
       if (wb !== undefined) { const list = decodeURIComponent(wb).split("|").filter((x) => KEEP.includes(x)); saveSettings({ ...loadSettings(), widgetBoats: list.length ? list : null }); return false; }
+      const bk = (/blocked=([^&]*)/.exec(u) || [])[1];
+      if (bk !== undefined) { let b = null; try { b = JSON.parse(decodeURIComponent(bk)); } catch (e) {} saveSettings({ ...loadSettings(), blocked: b }); applyBlocked(b); return false; }
       const md = (/mode=(fast|normal)/.exec(u) || [])[1];
       if (md) { saveSettings({ ...loadSettings(), mode: md }); return false; }
       const n = +((/ahead=(\d+)/.exec(u) || [])[1]);

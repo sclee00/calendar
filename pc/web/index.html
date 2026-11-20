@@ -195,6 +195,15 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nav .vsw button.on{background:var(--ink,#18232c);color:#fff}
 .cell .num.md{width:auto;padding:0 3px;white-space:nowrap}
 .cell.out{opacity:.45;cursor:default}
+.cell.blk{background:repeating-linear-gradient(135deg,var(--past) 0 7px,transparent 7px 14px),var(--surface)}
+.blkt{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 6px}
+.cal.pickv .wk.hd{display:none}
+.cell .wdl{font-size:10.5px;color:var(--muted);margin-left:3px}
+.dows{display:flex;gap:6px;flex-wrap:wrap}.dows label{display:inline-flex;align-items:center;gap:3px;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips span{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:2px 4px 2px 9px;font-size:12.5px}
+.chips button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}
+.dayacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.pickempty{grid-column:1/-1;padding:30px 16px;text-align:center;color:var(--muted)}
 .nav svg{width:16px;height:16px}
 .wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
 .wk.hd div{font-size:11px;color:var(--muted);text-align:center;padding:6px 0;border-bottom:1px solid var(--line)}
@@ -266,6 +275,23 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <label><input type="checkbox" id="showWx"> 날짜 아래 날씨·기온·바람(인천) 표시</label>
       <small style="flex-basis:100%">앞으로 16일까지만 나와요(기상 예보 범위). 바람은 그날 최대 풍속: <b style="color:#13a06e">약</b> 4m/s 미만 · <b style="color:#c9a000">보통</b> 4~7 · <b style="color:#e8780c">강</b> 7~10 · <b style="color:#e0473a">매우 강</b> 10 이상</small>
     </div></details>
+    <details class="fold" id="fold-blk"><summary>출조불가 날 <small class="fs" id="sumBlk"></small></summary><div class="fbody">
+      <span style="flex-basis:100%">매주 출조불가인 요일</span>
+      <div class="dows" id="blkWd" style="flex-basis:100%"></div>
+      <span style="flex-basis:100%">출조불가인 날짜</span>
+      <div class="chips" id="blkDays" style="flex-basis:100%"></div>
+      <label><input type="date" id="blkAdd"> <button type="button" class="mini" id="blkAddBtn">더하기</button></label>
+      <small style="flex-basis:100%">달력에서 날짜 칸을 꾹 누르면(PC: 오른쪽 클릭) 바로 표시·해제할 수 있어요. 출조불가 날은 선사 사이트를 읽지 않고(칸피싱·제일·시크릿버스는 그 날 페이지를 건너뜀), 빈자리 알림도 보내지 않아요.</small>
+    </div></details>
+    <details class="fold" id="fold-pick"><summary>골라 보기 <small class="fs" id="sumPick"></small></summary><div class="fbody">
+      <span style="flex-basis:100%">보여 줄 요일</span>
+      <div class="dows" id="pickWd" style="flex-basis:100%"></div>
+      <span style="flex-basis:100%">더 보여 줄 날짜</span>
+      <div class="chips" id="pickDays" style="flex-basis:100%"></div>
+      <label><input type="date" id="pickAdd"> <button type="button" class="mini" id="pickAddBtn">더하기</button></label>
+      <label>기간 <select id="pickWeeks"><option value="4">4주</option><option value="8">8주</option><option value="12">12주</option><option value="16">16주</option></select></label>
+      <small style="flex-basis:100%">달력 위 '골라 보기'를 누르면 오늘부터 정한 기간 안에서 고른 요일과 날짜만 모아 보여 줘요(출조불가 날은 빠짐). 날짜 칸을 꾹 눌러(PC: 오른쪽 클릭) 넣고 뺄 수도 있어요.</small>
+    </div></details>
     <details class="fold" id="fold-ahead"><summary>확인 기간·방식 <small class="fs" id="sumAhead"></small></summary><div class="fbody">
     <span>처음 열 때 확인할 기간</span>
     <select id="aheadSel" aria-label="확인 기간"></select>
@@ -331,7 +357,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <div class="mhead">
         <b id="mtitle"></b>
         <div class="nav">
-          <span class="vsw" role="group" aria-label="보기"><button type="button" data-v="month">월</button><button type="button" data-v="4w">4주</button></span>
+          <span class="vsw" role="group" aria-label="보기"><button type="button" data-v="month">월</button><button type="button" data-v="4w">4주</button><button type="button" data-v="pick">골라 보기</button></span>
           <button class="today" id="goToday" type="button">오늘</button>
           <button id="prev" aria-label="이전 달" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
           <button id="next" aria-label="다음 달" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -504,20 +530,58 @@ async function loadWx(){
     render();
   }catch(e){}
 }
+// ── 출조불가 날 / 골라 보기 설정 ──
+// 출조불가는 앱·PC가 사이트를 읽을 때도 쓰므로 앱 설정에도 보낸다(fishing://settings?blocked=), 골라 보기는 이 기기에만
+const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||"null")||d}catch(e){return d}};
+const lsPut=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const BLK={days:new Set(),wd:new Set()};
+(()=>{const b=window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",{});BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number))})();
+const dateOf=k=>{const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
+const isBlk=k=>BLK.days.has(k)||BLK.wd.has(dateOf(k).getDay());
+function saveBlk(){const v={days:[...BLK.days].filter(k=>k>=TODAY).sort(),weekdays:[...BLK.wd].sort()};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
+  if(window.__inScriptable)window.__host("fishing://settings?blocked="+encodeURIComponent(JSON.stringify(v)));render();drawBlkPick()}
+const PICK=(()=>{const p=lsGet("pickView",{});return{wd:new Set(Array.isArray(p.wd)?p.wd:[5,6,0]),days:new Set(p.days||[]),weeks:+p.weeks||8}})();
+function savePick(){lsPut("pickView",{wd:[...PICK.wd],days:[...PICK.days].filter(k=>k>=TODAY).sort(),weeks:PICK.weeks});render();drawBlkPick()}
+function pickDays(){const out=[],t=dateOf(TODAY);for(let i=0;i<PICK.weeks*7;i++){const x=new Date(t);x.setDate(t.getDate()+i);const k=`${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`;
+  if(!MONTHS.includes(k.slice(0,7)))continue;if((PICK.wd.has(x.getDay())||PICK.days.has(k))&&!isBlk(k))out.push(x)}return out}
+function drawBlkPick(){
+  const wdBoxes=(id,set,save)=>{const el=document.getElementById(id);if(!el)return;el.innerHTML="";WD.forEach((w,i)=>{const l=document.createElement("label");l.innerHTML=`<input type="checkbox"> ${w}`;const c=l.firstChild;c.checked=set.has(i);c.onchange=()=>{c.checked?set.add(i):set.delete(i);save()};el.append(l)})};
+  const chips=(id,set,save)=>{const el=document.getElementById(id);if(!el)return;const list=[...set].filter(k=>k>=TODAY).sort();
+    el.innerHTML=list.length?"":'<small class="muted">없음</small>';list.forEach(k=>{const x=dateOf(k),sp=document.createElement("span");sp.innerHTML=`${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})<button type="button" title="빼기">×</button>`;sp.lastChild.onclick=()=>{set.delete(k);save()};el.append(sp)})};
+  wdBoxes("blkWd",BLK.wd,saveBlk);chips("blkDays",BLK.days,saveBlk);wdBoxes("pickWd",PICK.wd,savePick);chips("pickDays",PICK.days,savePick);
+  const pw=document.getElementById("pickWeeks");if(pw)pw.value=String(PICK.weeks);
+  const n=[...BLK.days].filter(k=>k>=TODAY).length,wl=[...BLK.wd].sort().map(i=>WD[i]).join("·");
+  const sb=document.getElementById("sumBlk");if(sb)sb.textContent=[wl&&`매주 ${wl}`,n&&`날짜 ${n}일`].filter(Boolean).join(" · ")||"없음";
+  const sp=document.getElementById("sumPick");if(sp)sp.textContent=`${[...PICK.wd].sort().map(i=>WD[i]).join("·")||"요일 없음"}${PICK.days.size?` + 날짜 ${[...PICK.days].filter(k=>k>=TODAY).length}일`:""} · ${PICK.weeks}주`;
+}
 // 4주 보기: 오늘이 들어 있는 주(일요일)부터 4주. ‹ ›는 한 주씩
 function weekStart(){const t=new Date(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8));t.setDate(t.getDate()-t.getDay()+7*(st.wk||0));return t}
 function fourWeeks(){const s=weekStart();return Array.from({length:28},(_,i)=>{const x=new Date(s);x.setDate(s.getDate()+i);return x})}
 function wkBounds(){const a=MONTHS[0],b=MONTHS[MONTHS.length-1];const lo=new Date(+a.slice(0,4),+a.slice(5)-1,1),hi=new Date(+b.slice(0,4),+b.slice(5),0);const s=weekStart(),e=new Date(s);e.setDate(s.getDate()+27);return{canPrev:s>lo,canNext:e<hi}}
-function cellHtml(mk,d,showMo){
+function cellHtml(mk,d,showMo,showWd){
   const k=`${mk}-${pad(d)}`,[Y,M]=mk.split("-").map(Number),w=new Date(Y,M-1,d).getDay(),T=(TIDE[mk]||[])[d-1];
-  let rows=cellRows(mk,d);
-  let h=`<div class="dn"><span class="num${showMo?" md":""}">${showMo?`${M}/${d}`:d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div>${wxLine(k)}<div class="tiles">`;
+  const blk=k>=TODAY&&isBlk(k);
+  let rows=blk?[]:cellRows(mk,d);
+  let h=`<div class="dn"><span class="num${showMo?" md":""}">${showMo?`${M}/${d}`:d}</span>${showWd?`<span class="wdl">${WD[w]}</span>`:""}${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div>${wxLine(k)}<div class="tiles">`;
   if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
+  if(blk)h+=`<span class="blkt">출조불가</span>`;
   rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
-  return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")};
+  return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(blk?" blk":"")};
 }
 function grid(){
   document.querySelectorAll(".vsw button").forEach(b=>b.classList.toggle("on",b.dataset.v===(st.view||"month")));
+  document.querySelector(".cal").classList.toggle("pickv",st.view==="pick");
+  if(st.view==="pick"){
+    const days=pickDays(),g=document.getElementById("grid");g.innerHTML="";
+    document.getElementById("mtitle").textContent=`골라 보기 · ${days.length}일`;
+    document.getElementById("prev").disabled=true;document.getElementById("next").disabled=true;
+    if(!days.length){g.innerHTML='<div class="pickempty">보여 줄 날이 없어요. ⚙ 설정 → 골라 보기에서 요일이나 날짜를 고르세요.</div>';return}
+    const selMk=MONTHS[st.m];let pm="";
+    days.forEach(x=>{const mk=`${x.getFullYear()}-${pad(x.getMonth()+1)}`,d=x.getDate();
+      const c=cellHtml(mk,d,mk!==pm,true);pm=mk;const el=document.createElement("button");el.type="button";el.id="c-"+mk+"-"+pad(d);
+      el.className=c.cls+(x.getMonth()%2===1?" even":"")+(mk===selMk&&d===st.day?" sel":"");el.innerHTML=c.h;el.onclick=()=>{st.m=MONTHS.indexOf(mk);st.day=d;render()};g.append(el)});
+    return;
+  }
   if(st.view==="4w"){
     const days=fourWeeks(),a=days[0],z=days[27],g=document.getElementById("grid");g.innerHTML="";
     document.getElementById("mtitle").textContent=`${a.getMonth()+1}/${a.getDate()} – ${z.getMonth()+1}/${z.getDate()}`;
@@ -540,11 +604,8 @@ function grid(){
     const k=`${mk}-${pad(d)}`,w=new Date(Y,M-1,d).getDay(),T=TIDE[mk][d-1];
     const el=document.createElement("button");el.type="button";el.id="c-"+k;
     el.className="cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(d===st.day?" sel":"");
-    let rows=cellRows(mk,d);
-    let h=`<div class="dn"><span class="num">${d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div>${wxLine(k)}<div class="tiles">`;
-    if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
-    rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
-    el.innerHTML=h+"</div>";el.onclick=()=>{st.day=d;render()};g.append(el);
+    const c=cellHtml(mk,d,false);if(c.cls.includes(" blk"))el.className+=" blk";
+    el.innerHTML=c.h;el.onclick=()=>{st.day=d;render()};g.append(el);
   }
   const tail=(7-(first+last)%7)%7;
   for(let i=0;i<tail;i++){const e=document.createElement("div");e.className="cell blank";g.append(e)}
@@ -554,11 +615,15 @@ function panel(){
   if(st.day>last)st.day=last;
   const d=st.day,w=WD[new Date(Y,M-1,d).getDay()],T=TIDE[mk][d-1];
   const MB=monthBoats(mk);
-  const rows=cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
+  const dk=`${mk}-${pad(d)}`,blk=dk>=TODAY&&isBlk(dk);
+  const rows=blk?[]:cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
   h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row" data-k="${mk}|${b.name}|${d}">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${s==="cancel"&&sp==="u"&&!r.fn?"":spText(r)+" · "}${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE.has(k)?`<span class="mybtn on">★ 내 예약</span>`:MINE_CAL.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:""})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
-    :`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
-  document.getElementById("panel").innerHTML=h;
+    :blk?`<p class="none">🚫 출조불가로 정해 둔 날이에요. 선사 사이트를 읽지 않아요.</p>`:`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
+  if(dk>=TODAY){const wdBlk=BLK.wd.has(new Date(Y,M-1,d).getDay());
+    h+=`<div class="dayacts">${wdBlk?`<small class="muted">매주 ${w}요일은 출조불가로 정해 두었어요(설정에서 바꿈)</small>`:`<button type="button" class="mini" data-day="blk">${BLK.days.has(dk)?"출조불가 해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="mini" data-day="pick">${PICK.days.has(dk)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div>`}
+  const pn=document.getElementById("panel");pn.innerHTML=h;
+  pn.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>dayToggle(dk,b.dataset.day));
 }
 function stamp(){
   const el=document.getElementById("stamp"),s=st.status;
@@ -584,12 +649,13 @@ function askMonth(){
   if(!window.__inScriptable)return;
   window.__asked=window.__asked||new Set();
   // 보이는 달(4주 보기는 걸쳐 있는 달들) 가운데 아직 확인 안 한 첫 달
-  const vis=st.view==="4w"?[...new Set(fourWeeks().map(x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}`))].filter(k=>MONTHS.includes(k)&&k>=TODAY.slice(0,7)):[MONTHS[st.m]];
+  const visOf=()=>st.view==="4w"||st.view==="pick"?[...new Set((st.view==="pick"?pickDays():fourWeeks()).map(x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}`))].filter(k=>MONTHS.includes(k)&&k>=TODAY.slice(0,7)):[MONTHS[st.m]];
+  const vis=visOf();
   const mk=vis.find(k=>!(window.__checked||[]).includes(k)&&!window.__asked.has(k));if(!mk)return;
   const sig=vis.join(",");
   clearTimeout(window.__askT);
   window.__askT=setTimeout(()=>{ // 빠르게 여러 달을 넘길 때는 멈춘 달만 확인
-    const now2=st.view==="4w"?[...new Set(fourWeeks().map(x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}`))].filter(k=>MONTHS.includes(k)&&k>=TODAY.slice(0,7)):[MONTHS[st.m]];
+    const now2=visOf();
     if(now2.join(",")!==sig||window.__asked.has(mk))return;
     window.__asked.add(mk);window.__host("fishing://month?ym="+mk)},900);
 }
@@ -608,7 +674,7 @@ function inRule(r,mk,d,name,s,sp){
 function newlyOpenedList(){const r=openRule(),out=[];
   for(const[mk,M]of Object.entries(st.seats||{})){if(mk<TODAY.slice(0,7))continue;const O=(M&&M.opened)||{},B=(M&&M.boats)||{};
     for(const[name,f]of Object.entries(O)){const b=B[name];if(!b)continue;String(f).split("").forEach((c,i)=>{const s=b.s[i],d=i+1;
-      if(c==="1"&&typeof s==="number"&&s>0&&`${mk}-${pad(d)}`>=TODAY&&!ACK.has(`${mk}|${name}|${d}`)&&inRule(r,mk,d,name,s,(b.sp||"")[i]))out.push({mk,d,name,s})})}}
+      if(c==="1"&&typeof s==="number"&&s>0&&`${mk}-${pad(d)}`>=TODAY&&!isBlk(`${mk}-${pad(d)}`)&&!ACK.has(`${mk}|${name}|${d}`)&&inRule(r,mk,d,name,s,(b.sp||"")[i]))out.push({mk,d,name,s})})}}
   return out.sort((a,b)=>(a.mk+pad(a.d)).localeCompare(b.mk+pad(b.d)))}
 function newAlert(){
   const box=document.getElementById("newAlert"),L=newlyOpenedList();
@@ -647,10 +713,23 @@ function mineSheet(k){
   el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(a&&a.dataset.act==="t"){el.remove();toggleMine(k)}};
   document.body.append(el);
 }
-document.addEventListener("contextmenu",e=>{const t=e.target.closest&&e.target.closest("[data-k]");if(!t)return;e.preventDefault();mineSheet(t.dataset.k)});
+// 날짜 칸을 꾹 누르기(PC: 오른쪽 클릭): 출조불가·골라 보기 넣고 빼기
+function dayToggle(k,what){
+  if(what==="blk"){BLK.days.has(k)?BLK.days.delete(k):BLK.days.add(k);saveBlk();notice(BLK.days.has(k)?`${+k.slice(5,7)}/${+k.slice(8)} 출조불가로 표시했어요. 이 날은 선사 사이트를 읽지 않아요.`:`${+k.slice(5,7)}/${+k.slice(8)} 출조불가를 해제했어요. 다음 확인 때 읽어 와요.`)}
+  else{PICK.days.has(k)?PICK.days.delete(k):PICK.days.add(k);savePick()}
+}
+function daySheet(k){
+  if(k<TODAY)return;const x=dateOf(k),wdBlk=BLK.wd.has(x.getDay());
+  const el=document.createElement("div");el.className="msheet";
+  el.innerHTML=`<div><div class="grp"><div class="ttl">${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})</div>${wdBlk?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가(설정에서 바꿈)</button>`:`<button type="button" class="b" data-act="blk">${BLK.days.has(k)?"출조불가 해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="b" data-act="pick">${PICK.days.has(k)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
+  el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(a){el.remove();dayToggle(k,a.dataset.act)}};
+  document.body.append(el);
+}
+const cellKey=t=>{const c=t.closest&&t.closest('.cell[id^="c-"]');return c?c.id.slice(2):null};
+document.addEventListener("contextmenu",e=>{const t=e.target.closest&&e.target.closest("[data-k]");if(t){e.preventDefault();mineSheet(t.dataset.k);return}const k=cellKey(e.target);if(k&&k>=TODAY){e.preventDefault();daySheet(k)}});
 (()=>{let timer=null,sx=0,sy=0,fired=false;
-  document.addEventListener("touchstart",e=>{const t=e.target.closest&&e.target.closest("[data-k]");if(!t)return;fired=false;const p=e.touches[0];sx=p.clientX;sy=p.clientY;
-    timer=setTimeout(()=>{fired=true;if(navigator.vibrate)navigator.vibrate(15);mineSheet(t.dataset.k)},550)},{passive:true});
+  document.addEventListener("touchstart",e=>{const t=e.target.closest&&e.target.closest("[data-k]"),k=t?null:cellKey(e.target);if(!t&&!(k&&k>=TODAY))return;fired=false;const p=e.touches[0];sx=p.clientX;sy=p.clientY;
+    timer=setTimeout(()=>{fired=true;if(navigator.vibrate)navigator.vibrate(15);t?mineSheet(t.dataset.k):daySheet(k)},550)},{passive:true});
   const stop=()=>{clearTimeout(timer);timer=null};
   document.addEventListener("touchmove",e=>{const p=e.touches[0];if(Math.abs(p.clientX-sx)>8||Math.abs(p.clientY-sy)>8)stop()},{passive:true});
   document.addEventListener("touchend",e=>{stop();if(fired){e.preventDefault();fired=false}});
@@ -676,9 +755,9 @@ window.__setNotices=(sites,freshCount)=>{
 document.getElementById("prev").onclick=()=>{if(st.view==="4w"){if(wkBounds().canPrev){st.wk=(st.wk||0)-1;render()}return}if(st.m>0){st.m--;st.day=1;render()}};
 document.getElementById("next").onclick=()=>{if(st.view==="4w"){if(wkBounds().canNext){st.wk=(st.wk||0)+1;render()}return}if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
 // 보기 바꾸기: 월 / 4주 (고른 것은 기억)
-try{st.view=localStorage.getItem("calView")==="4w"?"4w":"month"}catch(e){st.view="month"}
+try{const v=localStorage.getItem("calView");st.view=v==="4w"||v==="pick"?v:"month"}catch(e){st.view="month"}
 st.wk=0;
-document.querySelectorAll(".vsw button").forEach(b=>b.onclick=()=>{st.view=b.dataset.v;st.wk=0;if(st.view==="4w"){st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate()}try{localStorage.setItem("calView",st.view)}catch(e){}render()});
+document.querySelectorAll(".vsw button").forEach(b=>b.onclick=()=>{st.view=b.dataset.v;st.wk=0;if(st.view!=="month"){st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate()}try{localStorage.setItem("calView",st.view)}catch(e){}render()});
 // 달력을 옆으로 쓸어 이전/다음 달로 (손가락·마우스 끌기·트랙패드 두 손가락)
 (()=>{const cal=document.querySelector(".cal");if(!cal)return;
   const go=d=>{const b=document.getElementById(d>0?"next":"prev");if(b.disabled)return false;b.click();cal.classList.remove("swl","swr");void cal.offsetWidth;cal.classList.add(d>0?"swl":"swr");return true};
@@ -696,6 +775,12 @@ document.querySelectorAll(".vsw button").forEach(b=>b.onclick=()=>{st.view=b.dat
 })();
 document.getElementById("goToday").onclick=()=>{st.wk=0;st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
 document.getElementById("onlyOpen").onclick=()=>{st.only=!st.only;render()};
+// 출조불가·골라 보기 설정 칸
+drawBlkPick();
+const addDate=(inp,set,save)=>{const v=document.getElementById(inp).value;if(!v||v<TODAY)return;set.add(v);document.getElementById(inp).value="";save()};
+document.getElementById("blkAddBtn").onclick=()=>addDate("blkAdd",BLK.days,saveBlk);
+document.getElementById("pickAddBtn").onclick=()=>addDate("pickAdd",PICK.days,savePick);
+document.getElementById("pickWeeks").onchange=e=>{PICK.weeks=+e.target.value||8;savePick()};
 meta();render();
 
 const notice=msg=>{const n=document.getElementById("notice");n.textContent=msg;n.hidden=!msg};
