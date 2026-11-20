@@ -189,6 +189,12 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nav button{font:inherit;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .nav button.today{width:auto;border-radius:999px;padding:0 12px;font-size:12.5px}
 .nav button:disabled{opacity:.3;cursor:default}
+.vsw{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-right:2px}
+.nav .vsw button{width:auto;height:30px;border:0;border-radius:0;padding:0 11px;font-size:12.5px;background:var(--surface)}
+.nav .vsw button+button{border-left:1px solid var(--line)}
+.nav .vsw button.on{background:var(--ink,#18232c);color:#fff}
+.cell .num.md{width:auto;padding:0 3px;white-space:nowrap}
+.cell.out{opacity:.45;cursor:default}
 .nav svg{width:16px;height:16px}
 .wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
 .wk.hd div{font-size:11px;color:var(--muted);text-align:center;padding:6px 0;border-bottom:1px solid var(--line)}
@@ -324,6 +330,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <div class="mhead">
         <b id="mtitle"></b>
         <div class="nav">
+          <span class="vsw" role="group" aria-label="보기"><button type="button" data-v="month">월</button><button type="button" data-v="4w">4주</button></span>
           <button class="today" id="goToday" type="button">오늘</button>
           <button id="prev" aria-label="이전 달" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
           <button id="next" aria-label="다음 달" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -496,7 +503,31 @@ async function loadWx(){
     render();
   }catch(e){}
 }
+// 4주 보기: 오늘이 들어 있는 주(일요일)부터 4주. ‹ ›는 한 주씩
+function weekStart(){const t=new Date(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8));t.setDate(t.getDate()-t.getDay()+7*(st.wk||0));return t}
+function fourWeeks(){const s=weekStart();return Array.from({length:28},(_,i)=>{const x=new Date(s);x.setDate(s.getDate()+i);return x})}
+function wkBounds(){const a=MONTHS[0],b=MONTHS[MONTHS.length-1];const lo=new Date(+a.slice(0,4),+a.slice(5)-1,1),hi=new Date(+b.slice(0,4),+b.slice(5),0);const s=weekStart(),e=new Date(s);e.setDate(s.getDate()+27);return{canPrev:s>lo,canNext:e<hi}}
+function cellHtml(mk,d,showMo){
+  const k=`${mk}-${pad(d)}`,[Y,M]=mk.split("-").map(Number),w=new Date(Y,M-1,d).getDay(),T=(TIDE[mk]||[])[d-1];
+  let rows=cellRows(mk,d);
+  let h=`<div class="dn"><span class="num${showMo?" md":""}">${showMo?`${M}/${d}`:d}</span>${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}</div>${wxLine(k)}<div class="tiles">`;
+  if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
+  rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
+  return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")};
+}
 function grid(){
+  document.querySelectorAll(".vsw button").forEach(b=>b.classList.toggle("on",b.dataset.v===(st.view||"month")));
+  if(st.view==="4w"){
+    const days=fourWeeks(),a=days[0],z=days[27],g=document.getElementById("grid");g.innerHTML="";
+    document.getElementById("mtitle").textContent=`${a.getMonth()+1}/${a.getDate()} – ${z.getMonth()+1}/${z.getDate()}`;
+    const bd=wkBounds();document.getElementById("prev").disabled=!bd.canPrev;document.getElementById("next").disabled=!bd.canNext;
+    const selMk=MONTHS[st.m];
+    days.forEach((x,i)=>{const mk=`${x.getFullYear()}-${pad(x.getMonth()+1)}`,d=x.getDate();
+      if(!MONTHS.includes(mk)){const e=document.createElement("div");e.className="cell blank";g.append(e);return}
+      const c=cellHtml(mk,d,d===1||i===0);const el=document.createElement("button");el.type="button";el.id="c-"+mk+"-"+pad(d);
+      el.className=c.cls+(mk===selMk&&d===st.day?" sel":"");el.innerHTML=c.h;el.onclick=()=>{st.m=MONTHS.indexOf(mk);st.day=d;render()};g.append(el)});
+    return;
+  }
   const mk=MONTHS[st.m],[Y,M]=mk.split("-").map(Number);
   document.getElementById("mtitle").textContent=`${Y}년 ${M}월`;
   document.getElementById("prev").disabled=st.m===0;
@@ -550,11 +581,15 @@ document.getElementById("ackBtn").onclick=()=>{flaggedKeys().forEach(k=>ACK.add(
 // 아이폰 앱 안에서는, 아직 확인하지 않은 달로 넘기면 그 달만 확인을 요청한다
 function askMonth(){
   if(!window.__inScriptable)return;
-  const mk=MONTHS[st.m];window.__asked=window.__asked||new Set();
-  if((window.__checked||[]).includes(mk)||window.__asked.has(mk))return;
+  window.__asked=window.__asked||new Set();
+  // 보이는 달(4주 보기는 걸쳐 있는 달들) 가운데 아직 확인 안 한 첫 달
+  const vis=st.view==="4w"?[...new Set(fourWeeks().map(x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}`))].filter(k=>MONTHS.includes(k)&&k>=TODAY.slice(0,7)):[MONTHS[st.m]];
+  const mk=vis.find(k=>!(window.__checked||[]).includes(k)&&!window.__asked.has(k));if(!mk)return;
+  const sig=vis.join(",");
   clearTimeout(window.__askT);
   window.__askT=setTimeout(()=>{ // 빠르게 여러 달을 넘길 때는 멈춘 달만 확인
-    if(MONTHS[st.m]!==mk||window.__asked.has(mk))return;
+    const now2=st.view==="4w"?[...new Set(fourWeeks().map(x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}`))].filter(k=>MONTHS.includes(k)&&k>=TODAY.slice(0,7)):[MONTHS[st.m]];
+    if(now2.join(",")!==sig||window.__asked.has(mk))return;
     window.__asked.add(mk);location.href="fishing://month?ym="+mk},900);
 }
 // 조건에 맞는 '안 열렸다가 새로 열린 자리'를 맨 위에 크게 알림 (빈자리 알림의 '새로 열린 예약' 조건, 없으면 전체)
@@ -637,8 +672,12 @@ window.__setNotices=(sites,freshCount)=>{
   document.getElementById("sumNotice").textContent=freshCount?"":"새 공지 없음";
   if(freshCount){f.open=true;f.scrollIntoView({behavior:"smooth",block:"nearest"})}
 };
-document.getElementById("prev").onclick=()=>{if(st.m>0){st.m--;st.day=1;render()}};
-document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
+document.getElementById("prev").onclick=()=>{if(st.view==="4w"){if(wkBounds().canPrev){st.wk=(st.wk||0)-1;render()}return}if(st.m>0){st.m--;st.day=1;render()}};
+document.getElementById("next").onclick=()=>{if(st.view==="4w"){if(wkBounds().canNext){st.wk=(st.wk||0)+1;render()}return}if(st.m<MONTHS.length-1){st.m++;st.day=1;render()}};
+// 보기 바꾸기: 월 / 4주 (고른 것은 기억)
+try{st.view=localStorage.getItem("calView")==="4w"?"4w":"month"}catch(e){st.view="month"}
+st.wk=0;
+document.querySelectorAll(".vsw button").forEach(b=>b.onclick=()=>{st.view=b.dataset.v;st.wk=0;if(st.view==="4w"){st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate()}try{localStorage.setItem("calView",st.view)}catch(e){}render()});
 // 달력을 옆으로 쓸어 이전/다음 달로 (손가락·마우스 끌기·트랙패드 두 손가락)
 (()=>{const cal=document.querySelector(".cal");if(!cal)return;
   const go=d=>{const b=document.getElementById(d>0?"next":"prev");if(b.disabled)return false;b.click();cal.classList.remove("swl","swr");void cal.offsetWidth;cal.classList.add(d>0?"swl":"swr");return true};
@@ -654,7 +693,7 @@ document.getElementById("next").onclick=()=>{if(st.m<MONTHS.length-1){st.m++;st.
   cal.addEventListener("contextmenu",e=>{if(eat){e.stopPropagation();e.preventDefault()}},true);
   let acc=0,lock=0;cal.addEventListener("wheel",e=>{if(Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;e.preventDefault();if(Date.now()<lock)return;acc+=e.deltaX;if(Math.abs(acc)>=60){go(acc>0?1:-1);acc=0;lock=Date.now()+600}},{passive:false});
 })();
-document.getElementById("goToday").onclick=()=>{st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
+document.getElementById("goToday").onclick=()=>{st.wk=0;st.m=Math.max(0,MONTHS.indexOf(TODAY.slice(0,7)));st.day=now.getDate();render()};
 document.getElementById("onlyOpen").onclick=()=>{st.only=!st.only;render()};
 meta();render();
 
