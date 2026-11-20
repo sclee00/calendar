@@ -207,6 +207,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cell{position:relative}.dact{position:absolute;top:3px;right:3px;display:inline-flex;gap:1px;z-index:1} /* 칸 모양을 바꾸지 않게 오른쪽 위에 겹쳐 둠 */
 .dact{font-size:10px;line-height:1;pointer-events:none}
 .cell .dn{cursor:pointer}.cell:not(.past) .num{text-decoration:underline dotted transparent}.cell:not(.past) .dn:hover .num{text-decoration-color:var(--muted)}
+.blkn{display:block;margin-top:3px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.msheet .note{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line)}.msheet .note input{flex:1;min-width:0;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 .pickempty{grid-column:1/-1;padding:30px 16px;text-align:center;color:var(--muted)}
 .nav svg{width:16px;height:16px}
 .wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
@@ -283,6 +285,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <details class="fold" id="fold-blk"><summary>출조불가 날 <small class="fs" id="sumBlk"></small></summary><div class="fbody">
       <span style="flex-basis:100%">매주 출조불가인 요일</span>
       <div class="dows" id="blkWd" style="flex-basis:100%"></div>
+      <label style="flex-basis:100%">요일 반복 이유 <input id="blkWdNote" maxlength="40" placeholder="예: 근무" style="font:inherit;padding:4px 8px;border:1px solid var(--line);border-radius:8px;width:12em"></label>
       <span style="flex-basis:100%">출조불가인 날짜</span>
       <div class="chips" id="blkDays" style="flex-basis:100%"></div>
       <label><input type="date" id="blkAdd"> <button type="button" class="mini" id="blkAddBtn">더하기</button></label>
@@ -539,11 +542,14 @@ async function loadWx(){
 // 출조불가는 앱·PC가 사이트를 읽을 때도 쓰므로 앱 설정에도 보낸다(fishing://settings?blocked=), 골라 보기는 이 기기에만
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||"null")||d}catch(e){return d}};
 const lsPut=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-const BLK={days:new Set(),wd:new Set()};
-(()=>{const b=window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",{});BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number))})();
+const BLK={days:new Set(),wd:new Set(),notes:{},wdNote:""};
+(()=>{const b=window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",{});BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number));BLK.notes=b.notes&&typeof b.notes==="object"?b.notes:{};BLK.wdNote=String(b.wdNote||"")})();
+const escH=t=>String(t||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const blkNote=k=>BLK.notes[k]||(BLK.wd.has(dateOf(k).getDay())&&!BLK.days.has(k)?BLK.wdNote:"")||""; // 출조불가 이유
 const dateOf=k=>{const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
 const isBlk=k=>BLK.days.has(k)||BLK.wd.has(dateOf(k).getDay());
-function saveBlk(){const v={days:[...BLK.days].filter(k=>k>=TODAY).sort(),weekdays:[...BLK.wd].sort()};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
+function saveBlk(){const days=[...BLK.days].filter(k=>k>=TODAY).sort(),notes={};days.forEach(k=>{const n=String(BLK.notes[k]||"").trim().slice(0,40);if(n)notes[k]=n});BLK.notes=notes;
+  const v={days,weekdays:[...BLK.wd].sort(),notes,wdNote:String(BLK.wdNote||"").trim().slice(0,40)};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
   if(window.__inScriptable)location.href="fishing://settings?blocked="+encodeURIComponent(JSON.stringify(v));render();drawBlkPick()}
 const PICK=(()=>{const p=lsGet("pickView",{});return{wd:new Set(Array.isArray(p.wd)?p.wd:[5,6,0]),days:new Set(p.days||[]),weeks:+p.weeks||8}})();
 function savePick(){lsPut("pickView",{wd:[...PICK.wd],days:[...PICK.days].filter(k=>k>=TODAY).sort(),weeks:PICK.weeks});render();drawBlkPick()}
@@ -552,7 +558,7 @@ function pickDays(){const out=[],t=dateOf(TODAY);for(let i=0;i<PICK.weeks*7;i++)
 function drawBlkPick(){
   const wdBoxes=(id,set,save)=>{const el=document.getElementById(id);if(!el)return;el.innerHTML="";WD.forEach((w,i)=>{const l=document.createElement("label");l.innerHTML=`<input type="checkbox"> ${w}`;const c=l.firstChild;c.checked=set.has(i);c.onchange=()=>{c.checked?set.add(i):set.delete(i);save()};el.append(l)})};
   const chips=(id,set,save)=>{const el=document.getElementById(id);if(!el)return;const list=[...set].filter(k=>k>=TODAY).sort();
-    el.innerHTML=list.length?"":'<small class="muted">없음</small>';list.forEach(k=>{const x=dateOf(k),sp=document.createElement("span");sp.innerHTML=`${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})<button type="button" title="빼기">×</button>`;sp.lastChild.onclick=()=>{set.delete(k);save()};el.append(sp)})};
+    el.innerHTML=list.length?"":'<small class="muted">없음</small>';list.forEach(k=>{const x=dateOf(k),sp=document.createElement("span");sp.innerHTML=`${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})${set===BLK.days&&BLK.notes[k]?` <small class="muted">${escH(BLK.notes[k])}</small>`:""}<button type="button" title="빼기">×</button>`;sp.lastChild.onclick=()=>{set.delete(k);save()};el.append(sp)})};
   wdBoxes("blkWd",BLK.wd,saveBlk);chips("blkDays",BLK.days,saveBlk);wdBoxes("pickWd",PICK.wd,savePick);chips("pickDays",PICK.days,savePick);
   const pw=document.getElementById("pickWeeks");if(pw)pw.value=String(PICK.weeks);
   const n=[...BLK.days].filter(k=>k>=TODAY).length,wl=[...BLK.wd].sort().map(i=>WD[i]).join("·");
@@ -570,7 +576,7 @@ function cellHtml(mk,d,showMo,showWd){
   const act=k>=TODAY&&PICK.days.has(k)?`<span class="dact" title="골라 보기에 넣은 날">⭐</span>`:""; // 표시만 (바꾸기는 날짜 숫자를 눌러서)
   let h=`<div class="dn"><span class="num${showMo?" md":""}">${showMo?`${M}/${d}`:d}</span>${showWd?`<span class="wdl">${WD[w]}</span>`:""}${T&&T[1]?`<span class="tp" style="background:${rcol(T[1])}" title="고저차 ${T[1]}cm · ${T[0]}">${T[1]}</span><span class="ml">${T[0]}</span>`:""}${act}</div>${wxLine(k)}<div class="tiles">`;
   if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
-  if(blk)h+=`<span class="blkt">출조불가</span>`;
+  if(blk){const n=blkNote(k);h+=`<span class="blkt">출조불가</span>${n?`<span class="blkn" title="${escH(n)}">${escH(n)}</span>`:""}`}
   rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
   return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(blk?" blk":"")};
 }
@@ -625,11 +631,11 @@ function panel(){
   const rows=blk?[]:cellRows(mk,d).map(r=>({...r,n:MB[r.b.name].s[d-1]}));
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
   h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row" data-k="${mk}|${b.name}|${d}">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${s==="cancel"&&sp==="u"&&!r.fn?"":spText(r)+" · "}${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE.has(k)?`<span class="mybtn on">★ 내 예약</span>`:MINE_CAL.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:""})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
-    :blk?`<p class="none">🚫 출조불가로 정해 둔 날이에요. 선사 사이트를 읽지 않아요.</p>`:`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
+    :blk?`<p class="none">🚫 출조불가로 정해 둔 날이에요${blkNote(dk)?` — <b>${escH(blkNote(dk))}</b>`:""}. 선사 사이트를 읽지 않아요.</p>`:`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
   if(dk>=TODAY){const wdBlk=BLK.wd.has(new Date(Y,M-1,d).getDay());
-    h+=`<div class="dayacts">${wdBlk?`<small class="muted">매주 ${w}요일은 출조불가로 정해 두었어요(설정에서 바꿈)</small>`:`<button type="button" class="mini" data-day="blk">${BLK.days.has(dk)?"출조불가 해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="mini" data-day="pick">${PICK.days.has(dk)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div>`}
+    h+=`<div class="dayacts">${wdBlk?`<small class="muted">매주 ${w}요일은 출조불가로 정해 두었어요(설정에서 바꿈)</small>`:`<button type="button" class="mini" data-day="blk">${BLK.days.has(dk)?"출조불가 이유·해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="mini" data-day="pick">${PICK.days.has(dk)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div>`}
   const pn=document.getElementById("panel");pn.innerHTML=h;
-  pn.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>dayToggle(dk,b.dataset.day));
+  pn.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>b.dataset.day==="blk"?daySheet(dk):dayToggle(dk,b.dataset.day));
 }
 function stamp(){
   const el=document.getElementById("stamp"),s=st.status;
@@ -725,10 +731,18 @@ function dayToggle(k,what){
   else{PICK.days.has(k)?PICK.days.delete(k):PICK.days.add(k);savePick()}
 }
 function daySheet(k){
-  if(k<TODAY)return;const x=dateOf(k),wdBlk=BLK.wd.has(x.getDay());
+  if(k<TODAY)return;const x=dateOf(k),wdBlk=BLK.wd.has(x.getDay()),on=BLK.days.has(k);
   const el=document.createElement("div");el.className="msheet";
-  el.innerHTML=`<div><div class="grp"><div class="ttl">${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})</div>${wdBlk?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가(설정에서 바꿈)</button>`:`<button type="button" class="b" data-act="blk">${BLK.days.has(k)?"출조불가 해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="b" data-act="pick">${PICK.days.has(k)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
-  el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(a){el.remove();dayToggle(k,a.dataset.act)}};
+  const blkPart=wdBlk?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가${BLK.wdNote?` (${escH(BLK.wdNote)})`:""} — 설정에서 바꿈</button>`
+    :`<div class="note"><input id="blkNote" maxlength="40" placeholder="출조불가 이유 (적지 않아도 돼요)" value="${escH(BLK.notes[k]||"")}"></div>`
+      +(on?`<button type="button" class="b" data-act="note">이유 저장</button><button type="button" class="b" data-act="blk">출조불가 해제</button>`:`<button type="button" class="b" data-act="blk">🚫 출조불가로 표시</button>`);
+  el.innerHTML=`<div><div class="grp"><div class="ttl">${x.getMonth()+1}/${x.getDate()}(${WD[x.getDay()]})</div>${blkPart}<button type="button" class="b" data-act="pick">${PICK.days.has(k)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
+  el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(!a)return;
+    const inp=el.querySelector("#blkNote"),note=inp?inp.value.trim():"";el.remove();
+    if(a.dataset.act==="note"){if(note)BLK.notes[k]=note;else delete BLK.notes[k];saveBlk();notice(note?`이유를 저장했어요: ${note}`:"이유를 지웠어요");return}
+    if(a.dataset.act==="blk"&&!on){if(note)BLK.notes[k]=note;else delete BLK.notes[k]}
+    if(a.dataset.act==="blk"&&on)delete BLK.notes[k];
+    dayToggle(k,a.dataset.act)};
   document.body.append(el);
 }
 const cellKey=t=>{const c=t.closest&&t.closest('.cell[id^="c-"]');return c?c.id.slice(2):null};
@@ -788,6 +802,7 @@ document.getElementById("grid").addEventListener("click",e=>{const r=e.target.cl
 drawBlkPick();
 const addDate=(inp,set,save)=>{const v=document.getElementById(inp).value;if(!v||v<TODAY)return;set.add(v);document.getElementById(inp).value="";save()};
 document.getElementById("blkAddBtn").onclick=()=>addDate("blkAdd",BLK.days,saveBlk);
+{const wn=document.getElementById("blkWdNote");wn.value=BLK.wdNote;wn.onchange=()=>{BLK.wdNote=wn.value.trim();saveBlk()}}
 document.getElementById("pickAddBtn").onclick=()=>addDate("pickAdd",PICK.days,savePick);
 document.getElementById("pickWeeks").onchange=e=>{PICK.weeks=+e.target.value||8;savePick()};
 meta();render();
