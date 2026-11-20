@@ -819,12 +819,11 @@ function watchMessage(fresh) {
     const PK = "fishWinPresets";
     const getP = () => { try { return JSON.parse(localStorage.getItem(PK) || "[]") || []; } catch (e) { return []; } };
     const putP = (v) => { try { localStorage.setItem(PK, JSON.stringify(v)); } catch (e) {} };
-    document.head.insertAdjacentHTML("beforeend", `<style>#winBar{position:fixed;top:6px;right:12px;z-index:60;display:flex;gap:4px}
+    document.head.insertAdjacentHTML("beforeend", `<style>#winBar{position:fixed;top:64px;right:6px;z-index:60;display:flex;flex-direction:column;gap:5px}
       #winBar button{width:26px;height:26px;border-radius:50%;border:1px solid #1f5f99;background:#fff;color:#1f5f99;font:600 12px/1 system-ui,sans-serif;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
       #winBar button:hover{background:#1f5f99;color:#fff}#winBar button.add{border-style:dashed}#winBar button.just{background:#13a06e;border-color:#13a06e;color:#fff}</style>`);
     const bar = document.createElement("div"); bar.id = "winBar"; document.body.appendChild(bar);
-    // 버튼이 위쪽 '설정' 버튼과 겹치지 않게 페이지 전체를 조금 내린다
-    try { const pt = parseFloat(getComputedStyle(document.body).paddingTop) || 0; document.body.style.paddingTop = pt + 26 + "px"; } catch (e) {}
+
     const drawBar = () => {
       const ps = getP();
       bar.innerHTML = ps.map((p, i) => `<button type="button" data-i="${i}" title="창 배치 ${i + 1}: ${p.w}×${p.h} (${p.x}, ${p.y})\n누르면 이 크기·위치로 바뀜 · 오른쪽 클릭하면 지우기">${i + 1}</button>`).join("")
