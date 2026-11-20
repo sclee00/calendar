@@ -16,7 +16,7 @@
 <style>
 /* Layout: one month per view (Sun–Sat); date + tidal-range pill (blue→red) on top of each day; boats in a fixed order as species-shaped badges, green = seats, red = full, gray = cancelled */
 :root{
-  --bg:#f3f5f7; --surface:#ffffff; --ink:#18232c; --muted:#6a7983; --line:#dde3e7; --past:#f8f9fa; --even:#f3f7fb; --even-past:#eef2f6;
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#18232c; --muted:#6a7983; --line:#dde3e7; --past:#f8f9fa; --even:#f3f7fb; --even-past:#eef2f6; --sun:#fdf0f0; --sat:#edf3fd; --go:#e6f6ec; --evenov:rgba(70,80,90,.065);
   --accent:#1f5f99; --accent-ink:#ffffff;
   --open:#13a06e; --open-ink:#ffffff;
   --full:#e0473a; --full-ink:#ffffff;
@@ -26,12 +26,12 @@
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a;
+  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a; --sun:#2a1c20; --sat:#18233a; --go:#15302a; --evenov:rgba(255,255,255,.04);
   --accent:#8cc0ef; --accent-ink:#0f161b;
   --open:#2fbf8a; --open-ink:#06231a; --full:#ef6a5d; --full-ink:#2a0a06;
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a;
+  --bg:#0f161b; --surface:#172129; --ink:#e4ebf0; --muted:#94a4af; --line:#27353e; --past:#131c22; --even:#1a252e; --even-past:#16212a; --sun:#2a1c20; --sat:#18233a; --go:#15302a; --evenov:rgba(255,255,255,.04);
   --accent:#8cc0ef; --accent-ink:#0f161b;
   --open:#2fbf8a; --open-ink:#06231a; --full:#ef6a5d; --full-ink:#2a0a06;
   --cancel:#46545d; --cancel-ink:#c2ccd2; --neutral:#4b5d68; --neutral-ink:#e4ebf0; color-scheme:dark}
@@ -223,8 +223,10 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cell{font:inherit;color:inherit;text-align:left;background:var(--surface);border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-height:96px;padding:5px 4px 7px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
 .cell:nth-child(7n){border-right:0}
 .cell.blank{background:var(--past);cursor:default}
-.cell.past{background:var(--past)}
-.cell.even{background:var(--even)}.cell.even.past{background:var(--even-past)} /* 4주 보기: 짝수 달은 아주 옅게 */
+/* 칸 음영: 일요일 옅은 빨강 · 토요일 옅은 파랑 · 출조일(내 예약) 옅은 초록 · 지난 날 회색 · 짝수 달(4주·골라 보기) 옅은 회색을 덧씌움 */
+.cell.sun{background-color:var(--sun)}.cell.sat{background-color:var(--sat)}.cell.go{background-color:var(--go)}
+.cell.past{background-color:var(--past)}
+.cell.even{background-image:linear-gradient(var(--evenov),var(--evenov))}
 .cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
 .dn{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
 .wx{display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.1;white-space:nowrap;overflow:hidden;min-width:0}
@@ -600,7 +602,8 @@ function cellHtml(mk,d,showMo,showWd){
   if(st.only){const all=rows.length;rows=rows.filter(r=>r.s==="open");if(all&&!rows.length)h+=`<span class="cnt">자리 없음</span>`}
   if(blk){const n=blkNote(k),c=blkColor(k);h+=`<span class="blkt">출조불가${n?`<span class="blkn" title="${escH(n)}"${c?` style="color:${c}"`:""}>${escH(n)}</span>`:""}</span>`}
   rows.forEach(r=>{h+=badge(r.b,r.s+flagCls(r),r.sp,`${r.b.name} · ${spText(r)} · ${flagTxt(r)||LBL[r.s]}`,"",`data-k="${r.mk}|${r.b.name}|${r.d}"`)});
-  return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(blk?" blk":"")};
+  const go=[...MINE,...MINE_CAL].some(x=>{const p=x.split("|");return p[0]===mk&&+p[2]===d}); // 출조일(내 예약이 있는 날)
+  return {h:h+"</div>",cls:"cell"+(w===0?" sun":w===6?" sat":"")+(go?" go":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(blk?" blk":"")};
 }
 function grid(){
   document.querySelectorAll(".vsw button").forEach(b=>b.classList.toggle("on",b.dataset.v===(st.view||"month")));
@@ -637,8 +640,7 @@ function grid(){
   for(let d=1;d<=last;d++){
     const k=`${mk}-${pad(d)}`,w=new Date(Y,M-1,d).getDay(),T=TIDE[mk][d-1];
     const el=document.createElement("button");el.type="button";el.id="c-"+k;
-    el.className="cell"+(w===0?" sun":w===6?" sat":"")+(k===TODAY?" today":"")+(k<TODAY?" past":"")+(d===st.day?" sel":"");
-    const c=cellHtml(mk,d,false);if(c.cls.includes(" blk"))el.className+=" blk";
+    const c=cellHtml(mk,d,false);el.className=c.cls+(d===st.day?" sel":"");
     el.innerHTML=c.h;el.onclick=()=>{st.day=d;render()};g.append(el);
   }
   const tail=(7-(first+last)%7)%7;
