@@ -548,17 +548,19 @@ async function loadWx(){
 // 출조불가는 앱·PC가 사이트를 읽을 때도 쓰므로 앱 설정에도 보낸다(fishing://settings?blocked=), 골라 보기는 이 기기에만
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||"null")||d}catch(e){return d}};
 const lsPut=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-const BLK={days:new Set(),wd:new Set(),notes:{},wdNote:"",colors:{},wdColor:"",grp:{}}; // grp: 기간으로 함께 넣은 날 → 묶음 이름(해제도 함께)
+const BLK={days:new Set(),wd:new Set(),notes:{},wdNote:"",colors:{},wdColor:"",grp:{},allow:new Set()}; // allow: 요일 반복으로 막혔지만 이 날만 출조 가능. grp: 기간으로 함께 넣은 날 → 묶음 이름(해제도 함께)
 const NOTE_COLORS=[["","기본"],["#e0473a","빨강"],["#e8780c","주황"],["#c9a000","노랑"],["#13a06e","초록"],["#2f6fde","파랑"],["#8e44ad","보라"]]; // 출조불가 이유 글자색
-(()=>{const b=window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",{});BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number));BLK.notes=b.notes&&typeof b.notes==="object"?b.notes:{};BLK.wdNote=String(b.wdNote||"");BLK.colors=b.colors&&typeof b.colors==="object"?b.colors:{};BLK.wdColor=String(b.wdColor||"");BLK.grp=b.grp&&typeof b.grp==="object"?b.grp:{}})();
+(()=>{const b=window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",{});BLK.days=new Set(b.days||[]);BLK.wd=new Set((b.weekdays||[]).map(Number));BLK.notes=b.notes&&typeof b.notes==="object"?b.notes:{};BLK.wdNote=String(b.wdNote||"");BLK.colors=b.colors&&typeof b.colors==="object"?b.colors:{};BLK.wdColor=String(b.wdColor||"");BLK.grp=b.grp&&typeof b.grp==="object"?b.grp:{};BLK.allow=new Set(Array.isArray(b.allow)?b.allow:[])})();
 const escH=t=>String(t||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const okCol=c=>/^#[0-9a-f]{6}$/i.test(c||"")?c:"";
-const blkColor=k=>okCol(BLK.notes[k]?BLK.colors[k]:(BLK.wd.has(dateOf(k).getDay())&&!BLK.days.has(k)?BLK.wdColor:""));
-const blkNote=k=>BLK.notes[k]||(BLK.wd.has(dateOf(k).getDay())&&!BLK.days.has(k)?BLK.wdNote:"")||""; // 출조불가 이유
+const wdOn=k=>BLK.wd.has(dateOf(k).getDay())&&!BLK.allow.has(k); // 요일 반복으로 막힌 날(예외 빼고)
+const blkColor=k=>okCol(BLK.notes[k]?BLK.colors[k]:(wdOn(k)&&!BLK.days.has(k)?BLK.wdColor:""));
+const blkNote=k=>BLK.notes[k]||(wdOn(k)&&!BLK.days.has(k)?BLK.wdNote:"")||""; // 출조불가 이유
 const dateOf=k=>{const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
-const isBlk=k=>BLK.days.has(k)||BLK.wd.has(dateOf(k).getDay());
+const isBlk=k=>BLK.days.has(k)||wdOn(k);
 function saveBlk(){const days=[...BLK.days].filter(k=>k>=TODAY).sort(),notes={};const colors={},grp={};days.forEach(k=>{if(BLK.grp[k])grp[k]=BLK.grp[k];const n=String(BLK.notes[k]||"").trim().slice(0,40);if(n){notes[k]=n;if(okCol(BLK.colors[k]))colors[k]=BLK.colors[k]}});BLK.notes=notes;BLK.colors=colors;BLK.grp=grp;
-  const v={days,weekdays:[...BLK.wd].sort(),notes,colors,grp,wdNote:String(BLK.wdNote||"").trim().slice(0,40),wdColor:okCol(BLK.wdColor)};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
+  BLK.allow=new Set([...BLK.allow].filter(k=>k>=TODAY&&BLK.wd.has(dateOf(k).getDay())&&!BLK.days.has(k)));
+  const v={days,weekdays:[...BLK.wd].sort(),allow:[...BLK.allow].sort(),notes,colors,grp,wdNote:String(BLK.wdNote||"").trim().slice(0,40),wdColor:okCol(BLK.wdColor)};BLK.days=new Set(v.days);lsPut("blocked",v);window.__blocked=v;
   if(window.__inScriptable)location.href="fishing://settings?blocked="+encodeURIComponent(JSON.stringify(v));render();drawBlkPick()}
 const PICK=(()=>{const p=lsGet("pickView",{});return{wd:new Set(Array.isArray(p.wd)?p.wd:[5,6,0]),days:new Set(p.days||[]),weeks:+p.weeks||8}})();
 function savePick(){lsPut("pickView",{wd:[...PICK.wd],days:[...PICK.days].filter(k=>k>=TODAY).sort(),weeks:PICK.weeks});render();drawBlkPick()}
@@ -652,8 +654,8 @@ function panel(){
   let h=`<h2>${M}/${d} (${w})</h2><div class="tideinfo"><span class="tp" style="background:${rcol(T[1])}">${T[1]}cm</span>${T[0]}</div>`;
   h+=rows.length?rows.map(r=>{const{b,s,sp,n}=r,ft=flagTxt(r);return`<div class="row" data-k="${mk}|${b.name}|${d}">${badge(b,s+flagCls(r),sp,ft||LBL[s],"width:36px;height:24px")}<span class="nm"><span>${b.name}</span><small>${s==="cancel"&&sp==="u"&&!r.fn?"":spText(r)+" · "}${s==="open"?n+"석 남음"+(ft?" · "+ft:""):LBL[s]}</small></span>${(()=>{const k=`${mk}|${b.name}|${d}`;return MINE.has(k)?`<span class="mybtn on">★ 내 예약</span>`:MINE_CAL.has(k)?`<span class="mybtn cal" title="아이폰 캘린더 일정">📅 내 예약</span>`:""})()}<a href="${bookUrl(b,mk,d,s)}" target="fish_${b.u}" aria-label="${b.name} 예약 페이지">${LINK}</a></div>`}).join("")
     :blk?`<p class="none">🚫 출조불가로 정해 둔 날이에요${blkNote(dk)?` — <b${blkColor(dk)?` style="color:${blkColor(dk)}"`:""}>${escH(blkNote(dk))}</b>`:""}. 선사 사이트를 읽지 않아요.</p>`:`<p class="none">${!st.loaded?"예약 현황을 불러오는 중입니다.":"이 날짜는 예약 정보가 없습니다."}</p>`;
-  if(dk>=TODAY){const wdBlk=BLK.wd.has(new Date(Y,M-1,d).getDay());
-    h+=`<div class="dayacts">${wdBlk?`<small class="muted">매주 ${w}요일은 출조불가로 정해 두었어요(설정에서 바꿈)</small>`:`<button type="button" class="mini" data-day="blk">${BLK.days.has(dk)?"출조불가 이유·해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="mini" data-day="pick">${PICK.days.has(dk)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div>`}
+  if(dk>=TODAY){const wdBlk=wdOn(dk);
+    h+=`<div class="dayacts">${wdBlk?`<button type="button" class="mini" data-day="blk">매주 ${w}요일 출조불가 · 이 날 바꾸기</button>`:`<button type="button" class="mini" data-day="blk">${BLK.days.has(dk)?"출조불가 이유·해제":"🚫 출조불가로 표시"}</button>`}<button type="button" class="mini" data-day="pick">${PICK.days.has(dk)?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div>`}
   const pn=document.getElementById("panel");pn.innerHTML=h;
   pn.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>b.dataset.day==="blk"?daySheet(dk):dayToggle(dk,b.dataset.day));
 }
@@ -751,11 +753,12 @@ function dayToggle(k,what){
   else{PICK.days.has(k)?PICK.days.delete(k):PICK.days.add(k);savePick()}
 }
 function daySheet(k){
-  if(k<TODAY)return;const x=dateOf(k),wdBlk=BLK.wd.has(x.getDay()),on=BLK.days.has(k),pk=PICK.days.has(k);
+  if(k<TODAY)return;const x=dateOf(k),wdBlk=wdOn(k),on=BLK.days.has(k),pk=PICK.days.has(k),exc=BLK.allow.has(k);
   const el=document.createElement("div");el.className="msheet";
   const noteUi=`<div class="note"><input id="blkNote" maxlength="40" placeholder="출조불가 이유 (적지 않아도 돼요)" value="${escH(BLK.notes[k]||"")}"${okCol(BLK.colors[k])?` style="color:${BLK.colors[k]}"`:""}></div><div class="swatch"><small class="muted">글자색</small>${NOTE_COLORS.map(([c,n])=>`<b data-col="${c}" title="${n}" style="background:${c||"var(--muted)"}" class="${(okCol(BLK.colors[k])||"")===c?"on":""}"></b>`).join("")}</div>`;
   // 요일 반복으로 막힌 날: 안내 + 이 날부터 기간을 날짜로 더하기(따로 이유를 달 수 있음)
-  const blkPart=wdBlk&&!on?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가${BLK.wdNote?` (${escH(BLK.wdNote)})`:""} — 요일은 설정에서 바꿈</button>${noteUi}<button type="button" class="b" data-act="blkadd">🚫 이 날(또는 위 기간)을 출조불가로 추가</button>`
+  const blkPart=wdBlk&&!on?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가${BLK.wdNote?` (${escH(BLK.wdNote)})`:""}</button><button type="button" class="b" data-act="free">✅ 출조 가능으로 바꾸기</button>${noteUi}<button type="button" class="b" data-act="blkadd">🚫 이 날(또는 위 기간)을 출조불가로 추가</button>`
+    :exc&&!on?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일 출조불가지만 이 날은 출조 가능으로 바꿔 두었어요</button>${noteUi}<button type="button" class="b" data-act="blk">🚫 이 날도 출조불가로 되돌리기</button>`
     :noteUi
       +(on?`<button type="button" class="b" data-act="note">이유 저장</button><button type="button" class="b" data-act="blkadd">🚫 기간까지 출조불가로 (위 끝 날짜까지)</button><button type="button" class="b" data-act="blk">출조불가 해제</button>`:`<button type="button" class="b" data-act="blk">🚫 출조불가로 표시</button>`);
   el.innerHTML=`<div><div class="grp"><div class="ttl">${mdw(k)}</div>
@@ -771,6 +774,8 @@ function daySheet(k){
     if(a.dataset.act==="note"){ks.filter(d=>BLK.days.has(d)).forEach(setNote);saveBlk();notice(note?`이유를 저장했어요: ${note}`:"이유를 지웠어요");return}
     if(a.dataset.act==="blkadd"){if(ks.length<2&&!wdBlk){notice("기간으로 칸에 끝 날짜를 넣은 뒤 눌러 주세요.");setTimeout(()=>daySheet(k),0);return}
       let n=0;ks.forEach(d=>{if(!BLK.days.has(d))n++;BLK.days.add(d);setNote(d);setGrp(d)});saveBlk();notice(`${span}을 출조불가로 표시했어요(새로 ${n}일).`);return}
+    if(a.dataset.act==="free"||(a.dataset.act==="blk"&&on&&BLK.wd.has(x.getDay())&&!exc)){freeAsk(k);return}
+    if(a.dataset.act==="blk"&&exc&&!on){BLK.allow.delete(k);if(note){BLK.days.add(k);setNote(k)}saveBlk();notice(`${mdw(k)}을 다시 출조불가로 했어요.`);return}
     if(a.dataset.act==="blk"){if(on){
         // 기간으로 함께 넣은 날이면 그 기간 전체를 함께 해제 (끝 날짜를 따로 넣었으면 그 기간도 더해서)
         const all=[...new Set([...ks,...ks.flatMap(grpOf)])].filter(d=>BLK.days.has(d)).sort();
@@ -778,6 +783,16 @@ function daySheet(k){
         notice(`${all.length>1?`${mdw(all[0])} ~ ${mdw(all[all.length-1])} ${all.length}일`:mdw(k)} 출조불가를 해제했어요. 다음 확인 때 읽어 와요.`)}
       else{ks.forEach(d=>{BLK.days.add(d);setNote(d);setGrp(d)});saveBlk();notice(`${span} 출조불가로 표시했어요. 이 날은 선사 사이트를 읽지 않아요.`)}return}
     if(a.dataset.act==="pick"){ks.forEach(d=>pk?PICK.days.delete(d):PICK.days.add(d));savePick();notice(pk?`${span} 골라 보기에서 뺐어요.`:`${span} 골라 보기에 넣었어요.`)}};
+  document.body.append(el);
+}
+// 요일 반복으로 막힌 날을 출조 가능으로: 이 날만인지 그 요일 전체인지 물어봄
+function freeAsk(k){
+  const x=dateOf(k),w=WD[x.getDay()],el=document.createElement("div");el.className="msheet";
+  el.innerHTML=`<div><div class="grp"><div class="ttl">${mdw(k)}은 매주 ${w}요일 출조불가로 정해 둔 날이에요.<br>어떻게 바꿀까요?</div><button type="button" class="b" data-act="one">이 날만 출조 가능으로</button><button type="button" class="b" data-act="all">매주 ${w}요일 전체를 출조 가능으로</button></div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
+  el.onclick=e=>{const a=e.target.closest("[data-act]");if(e.target===el||a&&a.dataset.act==="x"){el.remove();return}if(!a)return;el.remove();
+    const clearDay=d=>{BLK.days.delete(d);delete BLK.notes[d];delete BLK.colors[d];delete BLK.grp[d]};
+    if(a.dataset.act==="one"){clearDay(k);BLK.allow.add(k);saveBlk();notice(`${mdw(k)}만 출조 가능으로 바꿨어요. 다른 ${w}요일은 그대로 출조불가예요.`)}
+    else{BLK.wd.delete(x.getDay());clearDay(k);[...BLK.allow].forEach(d=>{if(dateOf(d).getDay()===x.getDay())BLK.allow.delete(d)});saveBlk();notice(`매주 ${w}요일 출조불가를 풀었어요. (따로 날짜로 넣은 날은 그대로)`)}};
   document.body.append(el);
 }
 const cellKey=t=>{const c=t.closest&&t.closest('.cell[id^="c-"]');return c?c.id.slice(2):null};

@@ -14,9 +14,9 @@
   ];
   let SITES = [], KEEP = [], NOTICE_SITES = [];
   // 출조불가 날 (설정 → 출조불가 날): 이 날들은 사이트를 읽지 않고, 알림도 보내지 않는다
-  let BLOCKED = { days: new Set(), wd: new Set() };
-  function applyBlocked(b) { b = b || {}; BLOCKED = { days: new Set(Array.isArray(b.days) ? b.days : []), wd: new Set((Array.isArray(b.weekdays) ? b.weekdays : []).map(Number)) }; }
-  function isBlocked(y, m, d) { return BLOCKED.days.has(`${y}-${pad(m)}-${pad(d)}`) || BLOCKED.wd.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay()); }
+  let BLOCKED = { days: new Set(), wd: new Set(), allow: new Set() };
+  function applyBlocked(b) { b = b || {}; BLOCKED = { days: new Set(Array.isArray(b.days) ? b.days : []), wd: new Set((Array.isArray(b.weekdays) ? b.weekdays : []).map(Number)), allow: new Set(Array.isArray(b.allow) ? b.allow : []) }; }
+  function isBlocked(y, m, d) { const k = `${y}-${pad(m)}-${pad(d)}`; return BLOCKED.days.has(k) || (BLOCKED.wd.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay()) && !BLOCKED.allow.has(k)); } // allow: 요일 반복의 예외(이 날만 출조 가능)
   // 선사 목록 적용: boats는 이름 목록(SITES[].boats)과 자세한 정보(SITES[].info: 이름·아이콘 글자·배 번호)로 나눠 둔다
   function applySites(list) {
     const ok = Array.isArray(list) && list.some((x) => x && x.host && Array.isArray(x.boats) && x.boats.length);
