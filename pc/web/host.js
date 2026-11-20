@@ -778,13 +778,16 @@ function watchMessage(fresh) {
   window.addEventListener("focus", () => { document.title = document.title.replace(/^\(\d+\) /, ""); });
 
   // 프로그램에 '아직 열려 있음'을 알림 (탭을 모두 닫으면 프로그램이 스스로 끝남)
-  const ping = () => fetch("/api/ping", { method: "POST" }).catch(() => {
+  // 창마다 번호를 붙여 알리고, 창을 닫으면(X) 바로 '닫힘'을 알린다 → 열린 창이 하나도 없으면 프로그램이 곧바로 끝남
+  const PAGE_ID = Math.random().toString(36).slice(2, 10);
+  window.addEventListener("pagehide", () => { try { navigator.sendBeacon("/api/bye?id=" + PAGE_ID); } catch (e) {} });
+  const ping = () => fetch("/api/ping?id=" + PAGE_ID, { method: "POST" }).catch(() => {
     __setChecking(false, "PC 프로그램이 꺼져 있습니다. fishing-seats.exe를 다시 실행하세요.");
   });
   setInterval(ping, 20e3); ping();
 
   // 화면에 PC 버전 표시 (예전 버전이 떠 있는지 알 수 있게)
-  try { document.title = document.title.replace(/^PC · /, `PC ${window.__pcVersion || ""} · `); const st0 = document.getElementById("stamp"); if (st0) st0.insertAdjacentHTML("afterend", `<small style="display:block;color:var(--muted);font-size:11px">PC 버전 ${window.__pcVersion || "?"} <button type="button" id="pcQuit" style="margin-left:6px;font:inherit;font-size:12px;padding:2px 10px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:999px;cursor:pointer">⏻ 프로그램 끝내기</button></small>`); } catch (e) {}
+  try { document.title = document.title.replace(/^PC · /, `PC ${window.__pcVersion || ""} · `); const st0 = document.getElementById("stamp"); if (st0) st0.insertAdjacentHTML("afterend", `<small id="pcVer" style="display:block;color:var(--muted);font-size:11px">PC 버전 ${window.__pcVersion || "?"}</small>`); } catch (e) {}
   // ── 별도 창(앱 창)으로 열렸을 때: 지난번 창 크기·위치로 열고, 바뀔 때마다 기억 ──
   (() => {
     let app = new URLSearchParams(location.search).get("app") === "1" || (window.toolbar && window.toolbar.visible === false);
@@ -817,8 +820,8 @@ function watchMessage(fresh) {
       const multi = screen.isExtended === true || ("getScreenDetails" in window && screen.isExtended !== false);
       const st = await wmState();
       if (!multi || st === "granted" || st === "unsupported") return;
-      const q = document.getElementById("pcQuit"); if (!q) return;
-      q.insertAdjacentHTML("beforebegin", `<button type="button" id="pcScreens" style="margin-left:6px;font:inherit;font-size:12px;padding:2px 10px;border:1px solid #1f5f99;color:#1f5f99;background:#fff;border-radius:999px;cursor:pointer" title="창을 다른 모니터에 두었을 때 다음에도 그 모니터에서 열리게 해요">🖥 다른 모니터 허용</button>`);
+      const q = document.getElementById("pcVer"); if (!q) return;
+      q.insertAdjacentHTML("beforeend", `<button type="button" id="pcScreens" style="margin-left:6px;font:inherit;font-size:12px;padding:2px 10px;border:1px solid #1f5f99;color:#1f5f99;background:#fff;border-radius:999px;cursor:pointer" title="창을 다른 모니터에 두었을 때 다음에도 그 모니터에서 열리게 해요">🖥 다른 모니터 허용</button>`);
       const btn = document.getElementById("pcScreens");
       btn.onclick = async () => {
         const ok = await allowScreens(true);
@@ -827,8 +830,6 @@ function watchMessage(fresh) {
       };
     })();
   })();
-  // 프로그램 끝내기: 탭만 닫으면 몇 분 동안 뒤에서 켜져 있어 exe를 바꿔 넣을 수 없으므로 바로 끝낸다
-  try { document.getElementById("pcQuit").onclick = (e) => { e.preventDefault(); fetch("/api/quit", { method: "POST" }).catch(() => {}).finally(() => { document.body.innerHTML = '<p style="font:16px sans-serif;padding:40px;text-align:center">낚시배 빈자리 PC 버전을 끝냈어요. 이 탭을 닫아도 돼요.<br><small>다시 쓰려면 fishing-seats.exe를 실행하세요.</small></p>'; }); }; } catch (e) {}
   // 시작: 설정한 기간을 한 번 확인
   window.__checked = [];
   want(first);

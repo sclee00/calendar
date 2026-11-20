@@ -58,6 +58,7 @@ var (
 	mapMu    sync.Mutex
 	lastPing = time.Now()
 	pingMu   sync.Mutex
+	pages    = map[string]time.Time{} // 열려 있는 캘린더 창(번호 → 마지막 연락)
 	stripRe  = regexp.MustCompile(`(?is)<script\b.*?</script>|<style\b.*?</style>|<!--.*?-->`)
 	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state|notices|ocr)$`)
 )
@@ -131,8 +132,35 @@ func main() {
 	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
 		pingMu.Lock()
 		lastPing = time.Now()
+		if id := r.URL.Query().Get("id"); id != "" {
+			pages[id] = time.Now()
+		}
 		pingMu.Unlock()
 		io.WriteString(w, "fishing "+version)
+	})
+	// 창을 닫으면(X) 화면이 보내는 신호: 잠깐(새로 고침이면 새 창이 곧 연락함) 기다렸다가 열린 창이 하나도 없으면 끝냄
+	mux.HandleFunc("/api/bye", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		pingMu.Lock()
+		delete(pages, id)
+		pingMu.Unlock()
+		go func() {
+			time.Sleep(6 * time.Second)
+			pingMu.Lock()
+			alive := 0
+			for k, t := range pages {
+				if time.Since(t) < 90*time.Second {
+					alive++
+				} else {
+					delete(pages, k)
+				}
+			}
+			pingMu.Unlock()
+			if alive == 0 {
+				log.Println("창을 닫아 종료합니다")
+				os.Exit(0)
+			}
+		}()
 	})
 	mux.HandleFunc("/api/fetch", serveFetch)
 	mux.HandleFunc("/api/img", serveImg)
