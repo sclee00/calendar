@@ -328,7 +328,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     </div></details>
     <details class="fold" id="fold-web" hidden><summary>GitHub 연결 (웹 올리기·아이폰↔PC 동기화) <small class="fs" id="sumWeb"></small></summary><div class="fbody">
       <span id="webState" style="flex-basis:100%"></span>
-      <span style="flex-basis:100%"><b>동기화</b> · <small id="syncState">확인 중…</small></span>
+      <span style="flex-basis:100%"><b>동기화</b> · <small id="syncState">확인 중…</small> <button id="syncUndo" style="display:none"></button></span>
       <div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="sbtn" id="webSet">토큰 넣기</button><button type="button" class="mini" id="webOff">끄기(토큰 지우기)</button></div>
       <small style="flex-basis:100%">토큰을 넣어 두면 ① 확인할 때마다 그 결과를 sclee00.github.io/calendar 에도 올리고(칸피싱·제일바다낚시까지 최신), ② 출조불가·골라 보기·내 예약·빈자리 알림·선사·배 필터 같은 설정을 아이폰과 PC가 서로 맞춰요. 아이폰과 PC에 <b>같은 토큰</b>을 넣으세요. 설정 내용은 그 토큰으로 암호화해서 저장해요. 'calendar' 저장소의 Contents 읽기·쓰기 권한만 있는 GitHub 토큰이면 돼요.</small>
     </div></details>
@@ -606,7 +606,7 @@ function drawBlkPick(){
 // 바뀐 항목마다 시각을 적어 두고, 더 나중에 바뀐 쪽을 쓴다. 내용은 GitHub 토큰으로 만든 열쇠로 암호화해서 저장소(data/sync.enc.json)에 둔다.
 const SYNC_KEYS=["blocked","pick","mine","watch","sites","boatsOff","mode","ahead","widgetBoats","showWx"];
 let SYM=lsGet("syncMeta",{}),SYNC_TOK=null,syncT=null,syncBusy=false;
-const syncGet=k=>({blocked:()=>window.__blocked||lsGet("blocked",null),pick:()=>lsGet("pickView",null),mine:()=>[...MINE],watch:()=>window.__watch||null,
+const syncGet=k=>({blocked:()=>window.__blocked||(window.__settings&&window.__settings.blocked)||lsGet("blocked",null),pick:()=>lsGet("pickView",null),mine:()=>[...MINE],watch:()=>window.__watch||null,
   sites:()=>window.__sites||(window.__settings&&window.__settings.sites)||null,boatsOff:()=>lsGet("boatsOff",null),mode:()=>window.__mode||"fast",ahead:()=>+window.__ahead||1,
   widgetBoats:()=>window.__wboats||null,showWx:()=>SHOW_WX}[k]());
 function syncTouch(k){SYM[k]=Date.now();lsPut("syncMeta",SYM);if(SYNC_TOK){clearTimeout(syncT);syncT=setTimeout(()=>syncPush(),1500)}}
@@ -636,16 +636,21 @@ function syncApply(R){
   if(Object.keys(app).length&&IN_APP)location.href="fishing://sync?apply="+encodeURIComponent(JSON.stringify(app)); // 앱 쪽 설정도 바꿈(선사가 바뀌면 화면을 다시 그림)
   if(!sitesChanged){drawBlkPick();render()}
 }
+// 동기화로 바뀌기 전 출조불가·골라 보기·내 예약으로 되돌리기
+function syncUndoBtn(){const b=document.getElementById("syncUndo");if(!b)return;const u=lsGet("syncUndo",null);b.style.display=u?"":"none";
+  if(u)b.textContent=`동기화 전으로 되돌리기 (${new Date(u.at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})})`;
+  b.onclick=()=>{const u=lsGet("syncUndo",null);if(!u||!confirm("동기화로 받아 오기 전의 출조불가·골라 보기·내 예약으로 되돌릴까요? (다른 기기에도 이 상태가 전해져요)"))return;
+    const R={};for(const[k,v]of Object.entries(u.v||{}))R[k]={v};syncBusy=true;syncApply(R);syncBusy=false;Object.keys(R).forEach(syncTouch);lsPut("syncUndo",null);syncUndoBtn()}}
 // 앱·PC가 저장소에서 받은 내용을 넘겨 줌 (txt=null: 아직 없음)
 window.__syncRemote=async(txt,tok,err)=>{
   SYNC_TOK=tok||null;const say=m=>{const el=document.getElementById("syncState");if(el)el.textContent=m};
-  if(!tok){say("꺼짐 — GitHub 토큰을 넣으면 아이폰·PC 설정을 맞춰요.");return}
+  syncUndoBtn();if(!tok){say("꺼짐 — GitHub 토큰을 넣으면 아이폰·PC 설정을 맞춰요.");return}
   if(err){say("동기화 확인 실패: "+err);return}
   let R=null,bad=false;if(txt){try{R=(await syncOpen(tok,txt)).data||null}catch(e){bad=true}}
   const take={};let needPush=!R;
   if(R)for(const k of SYNC_KEYS){const r=R[k],la=SYM[k]||0;if(!r)continue;
     if(!la&&["blocked","mine","pick"].includes(k)){ // 처음 맞출 때: 두 기기 것을 합침
-      const lv=syncGet(k),rv=r.v;let mv=rv;
+      const lv=syncGet(k),rv=r.v;let mv=rv==null?lv:rv; // 한쪽이 비어 있으면 다른 쪽 것을 그대로
       if(k==="mine")mv=[...new Set([...(rv||[]),...(lv||[])])];
       else if(k==="pick"&&lv&&rv)mv={...rv,days:[...new Set([...(rv.days||[]),...(lv.days||[])])]};
       else if(k==="blocked"&&lv&&rv)mv={...rv,days:[...new Set([...(rv.days||[]),...(lv.days||[])])],weekdays:[...new Set([...(rv.weekdays||[]),...(lv.weekdays||[])])],notes:{...(lv.notes||{}),...(rv.notes||{})},colors:{...(lv.colors||{}),...(rv.colors||{})},grp:{...(lv.grp||{}),...(rv.grp||{})},allow:rv.allow||[]};
@@ -653,7 +658,10 @@ window.__syncRemote=async(txt,tok,err)=>{
     if(r.at>la){take[k]=r;SYM[k]=r.at}else if(la>r.at)needPush=true}
   if(R)for(const k of SYNC_KEYS)if(!R[k]&&SYM[k])needPush=true;
   lsPut("syncMeta",SYM);
-  if(Object.keys(take).length){syncBusy=true;syncApply(take);syncBusy=false}
+  if(Object.keys(take).length){
+    const prev={};for(const k of ["blocked","pick","mine"])if(take[k]&&JSON.stringify(take[k].v)!==JSON.stringify(syncGet(k)))prev[k]=syncGet(k);
+    if(Object.keys(prev).length)lsPut("syncUndo",{at:Date.now(),v:prev}); // 받아 오기 전 상태 (되돌리기용)
+    syncBusy=true;syncApply(take);syncBusy=false;syncUndoBtn()}
   say(bad?"저장된 동기화 내용을 이 토큰으로 열 수 없어요(다른 토큰으로 저장됨). 이 기기 설정으로 새로 저장해요 — 아이폰과 PC에 같은 토큰을 넣어 주세요."
     :`켜짐 — 아이폰·PC 설정을 맞추고 있어요. (${new Date().toTimeString().slice(0,5)} 확인${Object.keys(take).length?` · ${Object.keys(take).length}가지 받아 옴`:""})`);
   if(needPush){clearTimeout(syncT);syncT=setTimeout(()=>syncPush(),800)}
