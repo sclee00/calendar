@@ -754,7 +754,7 @@ function daySheet(k){
   const el=document.createElement("div");el.className="msheet";
   const blkPart=wdBlk?`<button type="button" disabled>매주 ${WD[x.getDay()]}요일은 출조불가${BLK.wdNote?` (${escH(BLK.wdNote)})`:""} — 설정에서 바꿈</button>`
     :`<div class="note"><input id="blkNote" maxlength="40" placeholder="출조불가 이유 (적지 않아도 돼요)" value="${escH(BLK.notes[k]||"")}"${okCol(BLK.colors[k])?` style="color:${BLK.colors[k]}"`:""}></div><div class="swatch"><small class="muted">글자색</small>${NOTE_COLORS.map(([c,n])=>`<b data-col="${c}" title="${n}" style="background:${c||"var(--muted)"}" class="${(okCol(BLK.colors[k])||"")===c?"on":""}"></b>`).join("")}</div>`
-      +(on?`<button type="button" class="b" data-act="note">이유 저장</button><button type="button" class="b" data-act="blk">출조불가 해제</button>`:`<button type="button" class="b" data-act="blk">🚫 출조불가로 표시</button>`);
+      +(on?`<button type="button" class="b" data-act="note">이유 저장</button><button type="button" class="b" data-act="blkadd">🚫 기간까지 출조불가로 (위 끝 날짜까지)</button><button type="button" class="b" data-act="blk">출조불가 해제</button>`:`<button type="button" class="b" data-act="blk">🚫 출조불가로 표시</button>`);
   el.innerHTML=`<div><div class="grp"><div class="ttl">${mdw(k)}</div>
     <div class="note" style="align-items:center"><small class="muted" style="white-space:nowrap">기간으로: ${mdw(k)} ~</small><input type="date" id="rangeTo" min="${k}" title="끝 날짜 (하루만이면 비워 두기)"></div>
     ${blkPart}<button type="button" class="b" data-act="pick">${pk?"골라 보기에서 빼기":"⭐ 골라 보기에 넣기"}</button></div><div class="grp"><button type="button" class="b" data-act="x">취소</button></div></div>`;
@@ -765,6 +765,8 @@ function daySheet(k){
     const ks=rangeKeys(k,to),span=ks.length>1?`${mdw(ks[0])} ~ ${mdw(ks[ks.length-1])} ${ks.length}일`:mdw(k);
     const setNote=d=>{if(note){BLK.notes[d]=note;if(col)BLK.colors[d]=col;else delete BLK.colors[d]}else{delete BLK.notes[d];delete BLK.colors[d]}};
     if(a.dataset.act==="note"){ks.filter(d=>BLK.days.has(d)).forEach(setNote);saveBlk();notice(note?`이유를 저장했어요: ${note}`:"이유를 지웠어요");return}
+    if(a.dataset.act==="blkadd"){if(ks.length<2){notice("기간으로 칸에 끝 날짜를 넣은 뒤 눌러 주세요.");setTimeout(()=>daySheet(k),0);return}
+      let n=0;ks.forEach(d=>{if(!BLK.days.has(d))n++;BLK.days.add(d);setNote(d)});saveBlk();notice(`${span}을 출조불가로 표시했어요(새로 ${n}일).`);return}
     if(a.dataset.act==="blk"){if(on){ks.forEach(d=>{BLK.days.delete(d);delete BLK.notes[d];delete BLK.colors[d]});saveBlk();notice(`${span} 출조불가를 해제했어요. 다음 확인 때 읽어 와요.`)}
       else{ks.forEach(d=>{BLK.days.add(d);setNote(d)});saveBlk();notice(`${span} 출조불가로 표시했어요. 이 날은 선사 사이트를 읽지 않아요.`)}return}
     if(a.dataset.act==="pick"){ks.forEach(d=>pk?PICK.days.delete(d):PICK.days.add(d));savePick();notice(pk?`${span} 골라 보기에서 뺐어요.`:`${span} 골라 보기에 넣었어요.`)}};
