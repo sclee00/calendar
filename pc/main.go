@@ -58,6 +58,9 @@ var (
 	mapMu    sync.Mutex
 	lastPing = time.Now()
 	pingMu   sync.Mutex
+	// 윈도우 프로그램 창(WebView2)으로 떠 있는지 · 창을 앞으로 가져오는 함수
+	nativeUI   bool
+	showWindow func()
 	pages    = map[string]time.Time{} // 열려 있는 캘린더 창(번호 → 마지막 연락)
 	stripRe  = regexp.MustCompile(`(?is)<script\b.*?</script>|<style\b.*?</style>|<!--.*?-->`)
 	storeOK  = regexp.MustCompile(`^(seats|settings|watch-state|notices|ocr)$`)
@@ -81,7 +84,7 @@ func main() {
 			b, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 			if strings.TrimSpace(string(b)) == "fishing "+version {
-				openBrowser("http://" + addr + "/")
+				showExisting("http://" + addr)
 				return
 			}
 			if q, e := http.Post("http://"+addr+"/api/quit", "text/plain", nil); e == nil {
@@ -98,7 +101,7 @@ func main() {
 				b, _ := io.ReadAll(r.Body)
 				r.Body.Close()
 				if strings.TrimSpace(string(b)) == "fishing "+version {
-					openBrowser("http://" + altAddr + "/")
+					showExisting("http://" + altAddr)
 					return
 				}
 			}
@@ -144,6 +147,9 @@ func main() {
 		pingMu.Lock()
 		delete(pages, id)
 		pingMu.Unlock()
+		if nativeUI {
+			return // 윈도우 프로그램 창: 창을 닫으면 프로그램이 바로 끝나므로 여기서는 기다리지 않음
+		}
 		go func() {
 			time.Sleep(6 * time.Second)
 			pingMu.Lock()
@@ -162,6 +168,25 @@ func main() {
 			}
 		}()
 	})
+	// 이미 떠 있는 창을 앞으로 (프로그램을 한 번 더 실행했을 때)
+	mux.HandleFunc("/api/show", func(w http.ResponseWriter, r *http.Request) {
+		if showWindow != nil {
+			showWindow()
+			io.WriteString(w, "shown")
+			return
+		}
+		io.WriteString(w, "none")
+	})
+	// 윈도우 시작할 때 자동 실행 (GET: "1"/"0"/"unsupported", POST ?on=1|0)
+	mux.HandleFunc("/api/autostart", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if err := setAutostart(r.URL.Query().Get("on") == "1"); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		io.WriteString(w, autostartState())
+	})
 	mux.HandleFunc("/api/fetch", serveFetch)
 	mux.HandleFunc("/api/img", serveImg)
 	mux.HandleFunc("/api/store/", serveStore)
@@ -172,16 +197,29 @@ func main() {
 			pingMu.Lock()
 			idle := time.Since(lastPing)
 			pingMu.Unlock()
-			if idle > 4*time.Minute {
+			if idle > 4*time.Minute && !nativeUI {
 				log.Println("캘린더 탭이 닫혀 종료합니다")
 				os.Exit(0)
 			}
 		}
 	}()
 
-	go func() { time.Sleep(300 * time.Millisecond); openBrowser("http://" + serveAddr + "/") }()
 	log.Printf("실행 중: http://%s/ 버전 %s (데이터 폴더 %s)", serveAddr, version, dataDir)
-	log.Fatal(http.Serve(ln, mux))
+	go func() { log.Fatal(http.Serve(ln, mux)) }()
+	runUI("http://" + serveAddr + "/") // Windows: 프로그램 창(WebView2) · 그 밖: 브라우저 앱 창
+}
+
+// 이미 실행 중인 프로그램의 창을 앞으로 가져온다 (창이 없는 예전 방식이면 브라우저로 연다)
+func showExisting(base string) {
+	allowForeground()
+	if r, err := http.Post(base+"/api/show", "text/plain", nil); err == nil {
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if strings.TrimSpace(string(b)) == "shown" {
+			return
+		}
+	}
+	openBrowser(base + "/")
 }
 
 // 캘린더 화면: 저장해 둔 결과와 설정을 넣어서 준다

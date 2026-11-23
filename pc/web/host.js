@@ -852,12 +852,14 @@ function watchMessage(fresh) {
   try { document.title = document.title.replace(/^PC · /, `PC ${window.__pcVersion || ""} · `); const st0 = document.getElementById("stamp"); if (st0) st0.insertAdjacentHTML("afterend", `<small id="pcVer" style="display:block;color:var(--muted);font-size:11px">PC 버전 ${window.__pcVersion || "?"}</small>`); } catch (e) {}
   // ── 별도 창(앱 창)으로 열렸을 때: 지난번 창 크기·위치로 열고, 바뀔 때마다 기억 ──
   (() => {
-    let app = new URLSearchParams(location.search).get("app") === "1" || (window.toolbar && window.toolbar.visible === false);
+    const NATIVE = !!window.__native; // 윈도우 프로그램 창: 크기·위치 기억은 프로그램이 직접 함
+    let app = NATIVE || new URLSearchParams(location.search).get("app") === "1" || (window.toolbar && window.toolbar.visible === false);
     try { if (app) sessionStorage.setItem("fishApp", "1"); else app = sessionStorage.getItem("fishApp") === "1"; } catch (e) {}
     if (!app) return;
     if (location.search) try { history.replaceState(null, "", location.pathname); } catch (e) {}
     const K = "fishWinLast";
-    const now = () => ({ x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight });
+    const now0 = () => ({ x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight });
+    const now = () => NATIVE ? window.__winGet() : Promise.resolve(now0());
     const place = (b) => { try { window.moveTo(b.x, b.y); window.resizeTo(b.w, b.h); window.moveTo(b.x, b.y); } catch (e) {} };
     // 다른 모니터로 옮기려면 크롬의 '창 관리' 허용이 필요하다 (한 번 허용해 두면 다음부터 저절로)
     const onThisScreen = (b) => { const l = screen.availLeft || 0, t = screen.availTop || 0; return b.x >= l - 20 && b.y >= t - 20 && b.x < l + screen.availWidth && b.y < t + screen.availHeight; };
@@ -868,12 +870,13 @@ function watchMessage(fresh) {
       if (st === "denied" || (st === "prompt" && !ask)) return false;
       try { await window.getScreenDetails(); return true; } catch (e) { return false; }
     };
-    const apply = async (b, ask) => { if (!onThisScreen(b)) await allowScreens(ask); place(b); };
+    const apply = async (b, ask) => { if (NATIVE) return window.__winSet(b.x, b.y, b.w, b.h); if (!onThisScreen(b)) await allowScreens(ask); place(b); };
     let last = null; try { last = JSON.parse(localStorage.getItem(K) || "null"); } catch (e) {}
-    if (last && last.w > 300 && last.h > 300) apply(last, false);
+    if (NATIVE) {}
+    else if (last && last.w > 300 && last.h > 300) apply(last, false);
     else { const w = Math.min(1280, screen.availWidth), h = Math.min(960, screen.availHeight); place({ x: (screen.availLeft || 0) + Math.round((screen.availWidth - w) / 2), y: (screen.availTop || 0) + Math.round((screen.availHeight - h) / 2), w, h }); }
     let sig = "";
-    const save = () => { const b = now(), s = JSON.stringify(b); if (s !== sig && b.w > 300 && b.h > 300) { sig = s; try { localStorage.setItem(K, s); } catch (e) {} } };
+    const save = () => { if (NATIVE) return; const b = now0(), s = JSON.stringify(b); if (s !== sig && b.w > 300 && b.h > 300) { sig = s; try { localStorage.setItem(K, s); } catch (e) {} } };
     setTimeout(() => { save(); setInterval(save, 2000); }, 1500); // 창을 옮겨도 알려 주는 신호가 없어 2초마다 확인
     addEventListener("resize", () => { clearTimeout(save._t); save._t = setTimeout(save, 400); });
     addEventListener("beforeunload", save);
@@ -894,7 +897,7 @@ function watchMessage(fresh) {
     bar.addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
       const ps = getP();
-      if (b.dataset.add) { ps.push(now()); putP(ps); drawBar(); __setChecking(false, `지금 창 크기·위치를 ${ps.length}번으로 저장했어요. 번호를 누르면 그 배치로 바뀌어요.`); return; }
+      if (b.dataset.add) { now().then((r) => { ps.push(r); putP(ps); drawBar(); __setChecking(false, `지금 창 크기·위치를 ${ps.length}번으로 저장했어요. 번호를 누르면 그 배치로 바뀌어요.`); }); return; }
       const p = ps[+b.dataset.i]; if (!p) return;
       b.classList.add("just"); setTimeout(() => b.classList.remove("just"), 700);
       apply(p, true).then(() => setTimeout(save, 300));
@@ -908,6 +911,7 @@ function watchMessage(fresh) {
     drawBar();
     // 모니터가 여러 대이고 아직 허용 전이면 위쪽에 '다른 모니터 허용' 버튼을 보여 준다
     (async () => {
+      if (NATIVE) return;
       const multi = screen.isExtended === true || ("getScreenDetails" in window && screen.isExtended !== false);
       const st = await wmState();
       if (!multi || st === "granted" || st === "unsupported") return;
@@ -920,6 +924,20 @@ function watchMessage(fresh) {
         else __setChecking(false, (await wmState()) === "denied" ? "창 관리가 막혀 있어요. 창 왼쪽 위 아이콘(ⓘ 또는 자물쇠) → 사이트 설정 → '창 관리'를 허용으로 바꾼 뒤 다시 눌러 주세요." : "허용 창이 뜨면 '허용'을 눌러 주세요.");
       };
     })();
+  })();
+  // 윈도우 시작할 때 자동 실행 (윈도우 프로그램 창일 때만): ⚙ 설정 → 화면 표시
+  (async () => {
+    if (!window.__native) return;
+    const box = document.querySelector("#fold-view .fbody"); if (!box) return;
+    let st0 = "0"; try { st0 = (await (await fetch("/api/autostart")).text()).trim(); } catch (e) { return; }
+    if (st0 === "unsupported") return;
+    box.insertAdjacentHTML("afterbegin", `<label style="flex-basis:100%"><input type="checkbox" id="pcAuto"${st0 === "1" ? " checked" : ""}> 윈도우 시작할 때 자동 실행 <small>(작업 표시줄에 내려 둔 채 켜져서 빈자리 알림을 확인해요)</small></label>`);
+    const cb = document.getElementById("pcAuto");
+    cb.onchange = async () => {
+      try { const r = await fetch("/api/autostart?on=" + (cb.checked ? 1 : 0), { method: "POST" }); const t = (await r.text()).trim(); if (!r.ok) throw new Error(t); cb.checked = t === "1";
+        __setChecking(false, cb.checked ? "윈도우를 켜면 이 프로그램이 자동으로 실행돼요." : "자동 실행을 껐어요."); }
+      catch (e) { cb.checked = !cb.checked; __setChecking(false, "자동 실행을 바꾸지 못했어요: " + e.message); }
+    };
   })();
   // 시작: 설정한 기간을 한 번 확인
   window.__checked = [];
